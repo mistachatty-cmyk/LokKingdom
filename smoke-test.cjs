@@ -34,7 +34,8 @@ function element(id) {
 let nextFrame = null;
 const windowListeners = {};
 const document = {
-  body:{ addEventListener(){}, appendChild(){} },
+  body:{ addEventListener(){}, appendChild(){}, classList:classList() },
+  documentElement:{ style:{setProperty(){}} },
   pointerLockElement:null,
   getElementById:element,
   createElement:()=>element("generated"),
@@ -57,6 +58,16 @@ const context = {
 
 vm.createContext(context);
 vm.runInContext(source, context, {filename:"index.html"});
+if (element("main-menu").hidden) throw new Error("main menu did not open on launch");
+context.resumeGame();
+if (!element("main-menu").hidden) throw new Error("main menu did not close when entering the realm");
+context.pauseGame();
+if (element("pause-menu").hidden) throw new Error("pause screen did not open");
+context.openSettings("pause");
+if (element("settings-menu").hidden) throw new Error("settings screen did not open");
+context.closeSettings();
+if (element("pause-menu").hidden) throw new Error("settings did not return to the pause screen");
+context.resumeGame();
 if (!nextFrame) throw new Error("game loop did not schedule a frame");
 const frame = nextFrame; nextFrame = null; frame(1016);
 if (!element("screen").innerHTML.includes("<span")) throw new Error("renderer produced no colored realm output");

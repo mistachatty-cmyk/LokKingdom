@@ -45,6 +45,9 @@ from scratch as a small, expandable foundation rather than a demo.
   settlement values without adding player identity.
 - `SPRITE_BUCKETS`: world objects bucketed into 16×16 chunks;
   `nearbySprites()` prevents the renderer from scanning the whole realm.
+- `gameState`: `menu`, `playing`, `paused`, `paused-map`, or `settings`.
+  Only `playing` advances movement and the realm clock. Menus are game-native
+  overlays; settings are local device preferences under `lokrealm-device-settings`.
 - `MATERIALS`: per-material height multiplier + two colors (N/S faces
   vs E/W faces) for cheap directional lighting.
 - `castRay()`: grid DDA raycast, one call per screen column, returns
@@ -65,6 +68,10 @@ from scratch as a small, expandable foundation rather than a demo.
 
 Desktop: `W A S D` / arrow keys to move, `Q`/`E` to turn, click the
 canvas then move the mouse to look (pointer lock).
+
+`P` or `Esc` pauses/resumes. The touch-only Pause button opens the same pause
+screen. The pause map intentionally keeps `gameState` out of `playing`, so
+the player can read the local realm without advancing simulation time.
 
 Touch (shown only on `pointer: coarse` devices via CSS media query):
 dual dynamic joysticks, both positioned via inline `left`/`top` set in

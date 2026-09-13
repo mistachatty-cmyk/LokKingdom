@@ -10,6 +10,7 @@
     -webkit-touch-callout:none; -webkit-user-select:none; user-select:none;
     -webkit-tap-highlight-color:transparent;
   }
+  :root{ --text-scale:1; }
   #screen{
     font-family: "Courier New", monospace;
     font-weight:bold;
@@ -21,7 +22,7 @@
     -webkit-user-select:none;
     display:block;
     margin:0 auto;
-    font-size:8px;
+    font-size:calc(8px * var(--text-scale));
   }
   #hud{
     position:fixed; top:6px; left:8px;
@@ -126,6 +127,7 @@
     background:rgba(0,0,0,0.6); padding:4px 6px;
     white-space:pre; pointer-events:none; z-index:9998;
   }
+  #debug-hud[hidden]{ display:none !important; }
   #gyro-btn, #invert-gyro-btn{
     position:fixed; right:16px;
     font-family:monospace; font-size:11px; color:#bfe6bf;
@@ -135,6 +137,49 @@
   }
   #gyro-btn{ top:16px; }
   #invert-gyro-btn{ top:52px; }
+  #pause-btn{ right:16px; top:124px; }
+  .menu-overlay{
+    position:fixed; inset:0; z-index:100;
+    display:grid; place-items:center; padding:18px;
+    background:radial-gradient(circle at 50% 35%, rgba(31,49,31,.55), rgba(4,6,9,.88) 68%);
+    font-family:"Courier New",monospace;
+  }
+  .menu-overlay[hidden]{ display:none; }
+  .menu-card{
+    width:min(440px,100%); box-sizing:border-box; padding:26px;
+    border:1px solid rgba(215,199,136,.48); border-radius:10px;
+    background:rgba(8,13,12,.94); box-shadow:0 20px 70px rgba(0,0,0,.58);
+    color:#e7dfbd; text-align:center;
+  }
+  .menu-kicker{ color:#88bb82; font-size:11px; letter-spacing:.11em; }
+  .menu-title{ margin:8px 0 5px; color:#f1d77a; font-size:clamp(30px,9vw,54px); letter-spacing:.06em; }
+  .menu-copy{ margin:0 auto 18px; max-width:360px; color:#aeb8a4; font:13px/1.5 monospace; }
+  .menu-actions{ display:grid; gap:9px; }
+  .menu-button{
+    min-height:42px; border:1px solid rgba(153,193,126,.52); border-radius:6px;
+    color:#edf1dd; background:#19261b; font:14px monospace;
+  }
+  .menu-button.primary{ color:#18170f; background:#d8bd61; border-color:#f1d77a; font-weight:bold; }
+  .menu-button.secondary{ color:#aab7a4; background:#101915; border-color:rgba(153,193,126,.25); }
+  .menu-button:active{ transform:translateY(1px); }
+  .menu-rule{ height:1px; margin:18px 0; background:linear-gradient(90deg,transparent,rgba(215,199,136,.5),transparent); }
+  .menu-meta{ color:#71836d; font:11px/1.5 monospace; }
+  .setting-row{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:10px 0; border-bottom:1px solid rgba(153,193,126,.16); color:#cbd5bd;
+    text-align:left; font:12px/1.3 monospace;
+  }
+  .setting-row input[type="range"]{ width:145px; accent-color:#d8bd61; }
+  .setting-row input[type="checkbox"]{ width:18px; height:18px; accent-color:#d8bd61; }
+  .setting-value{ color:#efdb91; white-space:nowrap; }
+  .reduced-motion *, .reduced-motion *::before, .reduced-motion *::after{ transition:none !important; animation:none !important; }
+  body.menu-open #hud, body.menu-open #realm-hud, body.menu-open #context,
+  body.menu-open #hint, body.menu-open #touch-hint, body.menu-open #map-panel,
+  body.menu-open .touch-ui, body.menu-open #pause-btn{ visibility:hidden; }
+  @media (pointer: coarse){
+    .menu-card{ padding:22px 18px; }
+    .menu-copy{ font-size:12px; }
+  }
 </style>
 </head>
 <body>
@@ -156,6 +201,51 @@
 <button id="invert-gyro-btn" class="touch-ui">Invert Gyro: On</button>
 <button id="map-btn" class="game-btn touch-ui">Realm Map</button>
 <button id="interact-btn" class="game-btn touch-ui">Interact</button>
+<button id="pause-btn" class="game-btn touch-ui">Pause</button>
+
+<section id="main-menu" class="menu-overlay" aria-label="Lokrealm main menu">
+  <div class="menu-card">
+    <div class="menu-kicker">LOKREALM · ASC113 WORLD</div>
+    <h1 class="menu-title">LOKREALM</h1>
+    <p class="menu-copy">A seeded medieval realm of holds, wild frontiers, and the ancient First Maze.</p>
+    <div class="menu-actions">
+      <button id="start-game-btn" class="menu-button primary">Enter Realm</button>
+      <button id="main-settings-btn" class="menu-button">Settings</button>
+    </div>
+    <div class="menu-rule"></div>
+    <div id="main-menu-seed" class="menu-meta">Loading world seed…</div>
+    <div class="menu-meta">Desktop: WASD + mouse · Mobile: dual sticks + gyro</div>
+  </div>
+</section>
+
+<section id="pause-menu" class="menu-overlay" hidden aria-label="Paused game menu">
+  <div class="menu-card">
+    <div class="menu-kicker">REALM PAUSED</div>
+    <h2 class="menu-title">PAUSE</h2>
+    <p id="pause-location" class="menu-copy">The realm is waiting.</p>
+    <div class="menu-actions">
+      <button id="resume-game-btn" class="menu-button primary">Resume</button>
+      <button id="pause-map-btn" class="menu-button">Open Realm Map</button>
+      <button id="pause-settings-btn" class="menu-button">Settings</button>
+      <button id="return-main-btn" class="menu-button secondary">Return to Main Menu</button>
+    </div>
+    <div class="menu-rule"></div>
+    <div class="menu-meta">Press Esc or P to resume</div>
+  </div>
+</section>
+
+<section id="settings-menu" class="menu-overlay" hidden aria-label="Game settings">
+  <div class="menu-card">
+    <div class="menu-kicker">DEVICE PREFERENCES</div>
+    <h2 class="menu-title">SETTINGS</h2>
+    <div class="setting-row"><span>Text scale</span><span><input id="text-scale-input" type="range" min="80" max="135" step="5"><span id="text-scale-value" class="setting-value">100%</span></span></div>
+    <label class="setting-row"><span>Reduced motion</span><input id="reduced-motion-input" type="checkbox"></label>
+    <label class="setting-row"><span>Show touch debug</span><input id="touch-debug-input" type="checkbox"></label>
+    <div class="setting-row"><span>Gyro look</span><button id="settings-gyro-btn" class="menu-button secondary">Off</button></div>
+    <div class="setting-row"><span>Invert gyro</span><button id="settings-invert-btn" class="menu-button secondary">On</button></div>
+    <div class="menu-actions" style="margin-top:18px"><button id="settings-back-btn" class="menu-button primary">Back</button></div>
+  </div>
+</section>
 
 <script>
 // ---- visible error reporting: shows the real error on-screen instead of
@@ -444,6 +534,13 @@ function darken(hex, factor) {
 
 // ---------------- PLAYER ----------------
 const player = { x: 48.5, y: 56.5, angle: -Math.PI/2, pitch: 0 };
+const gameState = { mode:"menu", settingsReturn:"main" }; // menu | playing | paused | paused-map | settings
+const SETTINGS_KEY = "lokrealm-device-settings";
+const settings = {
+  textScale:100, reducedMotion:false, showTouchDebug:false, gyroInverted:true,
+  ...(() => { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}"); } catch (_) { return {}; } })(),
+};
+function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) {} }
 
 // ---------------- LIGHTWEIGHT REALM SIMULATION ----------------
 // Only aggregate settlement values update away from the player. Individual
@@ -466,8 +563,12 @@ function updateRealm(dt) {
 const keys = {};
 window.addEventListener("keydown", e => {
   keys[e.key.toLowerCase()] = true;
-  if (!e.repeat && e.key.toLowerCase() === "m") toggleMap();
-  if (!e.repeat && e.key.toLowerCase() === "f") interact();
+  if (e.repeat) return;
+  const key=e.key.toLowerCase();
+  if (key === "escape" || key === "p") { togglePause(); return; }
+  if (key === "m" && gameState.mode === "playing") toggleMap();
+  if (key === "m" && gameState.mode === "paused-map") pauseGame();
+  if (key === "f" && gameState.mode === "playing") interact();
 });
 window.addEventListener("keyup",   e => { keys[e.key.toLowerCase()] = false; });
 
@@ -478,12 +579,88 @@ const interactBtn = document.getElementById("interact-btn");
 const contextEl = document.getElementById("context");
 const worldSeedEl = document.getElementById("world-seed");
 const newWorldBtn = document.getElementById("new-world-btn");
+const mainMenu = document.getElementById("main-menu");
+const pauseMenu = document.getElementById("pause-menu");
+const settingsMenu = document.getElementById("settings-menu");
+const mainMenuSeed = document.getElementById("main-menu-seed");
+const pauseLocation = document.getElementById("pause-location");
+const startGameBtn = document.getElementById("start-game-btn");
+const resumeGameBtn = document.getElementById("resume-game-btn");
+const pauseMapBtn = document.getElementById("pause-map-btn");
+const pauseSettingsBtn = document.getElementById("pause-settings-btn");
+const mainSettingsBtn = document.getElementById("main-settings-btn");
+const returnMainBtn = document.getElementById("return-main-btn");
+const settingsBackBtn = document.getElementById("settings-back-btn");
+const pauseBtn = document.getElementById("pause-btn");
+const textScaleInput = document.getElementById("text-scale-input");
+const textScaleValue = document.getElementById("text-scale-value");
+const reducedMotionInput = document.getElementById("reduced-motion-input");
+const touchDebugInput = document.getElementById("touch-debug-input");
+const settingsGyroBtn = document.getElementById("settings-gyro-btn");
+const settingsInvertBtn = document.getElementById("settings-invert-btn");
 let contextTimer = 0;
+function clearInput() { for (const key in keys) keys[key]=false; joyDX=0; joyDY=0; lookJoyDX=0; lookJoyDY=0; }
+function setMenuVisibility(menu, visible) { menu.hidden=!visible; }
+function openMainMenu() {
+  clearInput(); gameState.mode="menu"; mapPanel.hidden=true;
+  setMenuVisibility(mainMenu,true); setMenuVisibility(pauseMenu,false); setMenuVisibility(settingsMenu,false);
+  document.body.classList.add("menu-open");
+}
+function resumeGame() {
+  clearInput(); gameState.mode="playing";
+  setMenuVisibility(mainMenu,false); setMenuVisibility(pauseMenu,false); setMenuVisibility(settingsMenu,false);
+  document.body.classList.remove("menu-open");
+}
+function pauseGame() {
+  clearInput(); gameState.mode="paused"; mapPanel.hidden=true;
+  const {site,distance}=nearestLandmark();
+  const region=REGIONS.find(entry=>entry.test(player.x,player.y));
+  pauseLocation.textContent = site && distance<=site.radius ? `Paused in ${site.name}.` : `Paused in ${region.name}.`;
+  setMenuVisibility(mainMenu,false); setMenuVisibility(pauseMenu,true); setMenuVisibility(settingsMenu,false);
+  document.body.classList.add("menu-open");
+}
+function openPauseMap() {
+  clearInput(); gameState.mode="paused-map"; mapPanel.hidden=false; drawMinimap();
+  setMenuVisibility(pauseMenu,false); document.body.classList.remove("menu-open");
+}
+function togglePause() {
+  if (gameState.mode === "playing") pauseGame();
+  else if (gameState.mode === "paused") resumeGame();
+  else if (gameState.mode === "paused-map") pauseGame();
+  else if (gameState.mode === "settings") closeSettings();
+}
+function openSettings(returnTo) {
+  clearInput(); gameState.settingsReturn=returnTo; gameState.mode="settings";
+  setMenuVisibility(mainMenu,false); setMenuVisibility(pauseMenu,false); setMenuVisibility(settingsMenu,true);
+  document.body.classList.add("menu-open"); applySettings();
+}
+function closeSettings() {
+  if (gameState.settingsReturn === "pause") pauseGame(); else openMainMenu();
+}
+function applySettings() {
+  document.documentElement.style.setProperty("--text-scale", String(settings.textScale/100));
+  document.body.classList.toggle("reduced-motion", Boolean(settings.reducedMotion));
+  document.getElementById("debug-hud").hidden=!settings.showTouchDebug;
+  textScaleInput.value=settings.textScale; textScaleValue.textContent=`${settings.textScale}%`;
+  reducedMotionInput.checked=settings.reducedMotion; touchDebugInput.checked=settings.showTouchDebug;
+}
+startGameBtn.addEventListener("click", resumeGame);
+resumeGameBtn.addEventListener("click", resumeGame);
+pauseBtn.addEventListener("click", pauseGame);
+pauseMapBtn.addEventListener("click", openPauseMap);
+returnMainBtn.addEventListener("click", openMainMenu);
+mainSettingsBtn.addEventListener("click", () => openSettings("main"));
+pauseSettingsBtn.addEventListener("click", () => openSettings("pause"));
+settingsBackBtn.addEventListener("click", closeSettings);
+textScaleInput.addEventListener("input", () => { settings.textScale=Number(textScaleInput.value); saveSettings(); applySettings(); });
+reducedMotionInput.addEventListener("change", () => { settings.reducedMotion=reducedMotionInput.checked; saveSettings(); applySettings(); });
+touchDebugInput.addEventListener("change", () => { settings.showTouchDebug=touchDebugInput.checked; saveSettings(); applySettings(); });
 function toggleMap() { mapPanel.hidden = !mapPanel.hidden; if (!mapPanel.hidden) drawMinimap(); }
 mapBtn.addEventListener("click", e => { e.stopPropagation(); toggleMap(); });
 interactBtn.addEventListener("click", e => { e.stopPropagation(); interact(); });
 worldSeedEl.textContent = `SEED ${WORLD_SEED}`;
 worldSeedEl.title = `World seed: ${WORLD_SEED}`;
+mainMenuSeed.textContent = `WORLD SEED · ${WORLD_SEED}`;
 newWorldBtn.addEventListener("click", e => {
   e.stopPropagation();
   const seed=randomSeed();
@@ -509,12 +686,12 @@ function interact() {
 }
 const isTouchDevice = ("ontouchstart" in window) || navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches;
 if (!isTouchDevice) {
-  document.body.addEventListener("click", () => {
-    screenEl.requestPointerLock && screenEl.requestPointerLock();
+  document.body.addEventListener("click", e => {
+    if (gameState.mode === "playing" && !e.target.closest("button, input")) screenEl.requestPointerLock && screenEl.requestPointerLock();
   });
 }
 document.addEventListener("mousemove", e => {
-  if (document.pointerLockElement === screenEl) {
+  if (gameState.mode === "playing" && document.pointerLockElement === screenEl) {
     player.angle += e.movementX * MOUSE_SENS;
     player.pitch -= e.movementY * 0.05;
     player.pitch = Math.max(-8, Math.min(8, player.pitch));
@@ -559,6 +736,7 @@ function releaseStaleTouches(e) {
 }
 
 function onTouchStart(e) {
+  if (gameState.mode !== "playing") return;
   releaseStaleTouches(e);
   debugTouchStarts++;
   for (const t of e.changedTouches) {
@@ -624,13 +802,20 @@ document.addEventListener("touchcancel", onTouchEnd);
 const gyroBtn = document.getElementById("gyro-btn");
 const invertGyroBtn = document.getElementById("invert-gyro-btn");
 let gyroEnabled = false, gyroYaw = 0, gyroPitch = 0;
-let gyroInverted = true; // most players expect tilt-back-to-look-down, like a flight stick
+let gyroInverted = settings.gyroInverted !== false; // most players expect tilt-back-to-look-down, like a flight stick
 let gyroNeutralBeta = null, gyroNeutralGamma = null, gyroBaseAngle = 0;
 
-invertGyroBtn.addEventListener("click", () => {
-  gyroInverted = !gyroInverted;
+function syncGyroControls() {
+  gyroBtn.textContent = gyroEnabled ? "Gyro: On (tap to turn off)" : "Enable Gyro Look";
   invertGyroBtn.textContent = "Invert Gyro: " + (gyroInverted ? "On" : "Off");
-});
+  settingsGyroBtn.textContent = gyroEnabled ? "On" : "Off";
+  settingsInvertBtn.textContent = gyroInverted ? "On" : "Off";
+}
+function toggleGyroInversion() {
+  gyroInverted = !gyroInverted; settings.gyroInverted=gyroInverted; saveSettings(); syncGyroControls();
+}
+invertGyroBtn.addEventListener("click", toggleGyroInversion);
+settingsInvertBtn.addEventListener("click", toggleGyroInversion);
 
 function onDeviceOrientation(e) {
   if (e.beta === null || e.gamma === null) return;
@@ -644,15 +829,15 @@ function startGyro() {
   gyroNeutralBeta = null; gyroNeutralGamma = null; // recalibrates to however you're holding it now
   window.addEventListener("deviceorientation", onDeviceOrientation);
   gyroEnabled = true;
-  gyroBtn.textContent = "Gyro: On (tap to turn off)";
+  syncGyroControls();
 }
 function stopGyro() {
   window.removeEventListener("deviceorientation", onDeviceOrientation);
   gyroEnabled = false;
   gyroYaw = 0; gyroPitch = 0;
-  gyroBtn.textContent = "Enable Gyro Look";
+  syncGyroControls();
 }
-gyroBtn.addEventListener("click", () => {
+function toggleGyro() {
   if (gyroEnabled) { stopGyro(); return; }
   if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
     DeviceOrientationEvent.requestPermission().then(state => {
@@ -661,7 +846,10 @@ gyroBtn.addEventListener("click", () => {
   } else if (window.DeviceOrientationEvent) {
     startGyro();
   }
-});
+}
+gyroBtn.addEventListener("click", toggleGyro);
+settingsGyroBtn.addEventListener("click", toggleGyro);
+syncGyroControls();
 
 function tryMove(nx, ny) {
   if (tileAt(nx, player.y) === 0) player.x = nx;
@@ -900,11 +1088,13 @@ function render(dt) {
 // ---------------- LOOP ----------------
 let lastTime = performance.now();
 let fpsFrames = 0, fpsTimer = 0;
+applySettings();
+openMainMenu();
 function loop(now) {
   const dt = Math.min(0.05, (now - lastTime) / 1000);
   lastTime = now;
 
-  update(dt);
+  if (gameState.mode === "playing") update(dt);
   render(dt);
 
   fpsFrames++; fpsTimer += dt;

@@ -27,6 +27,12 @@ mouse look to behave consistently across browsers).
 
 - `W A S D` / arrow keys — move
 - `Q` / `E` — turn
+- `P` or `Esc` — pause / resume
+- Main menu — enter the realm or open device settings
+- Pause menu — resume, inspect the local realm map without advancing time,
+  open settings, or return to the main menu
+- Settings — local text scale, reduced motion, touch-debug visibility, gyro,
+  and gyro inversion preferences; no account is required
 - Click the screen, then move the mouse — free look (pointer lock)
 - **Touch** (phones/tablets): dual joysticks, both dynamic — a stick
   pops up right where you touch down rather than sitting fixed in a
