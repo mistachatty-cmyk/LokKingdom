@@ -61,6 +61,12 @@
     border:2px solid rgba(127,220,127,0.6);
     pointer-events:none;
   }
+  #debug-hud{
+    position:fixed; top:28px; left:8px;
+    font-family:monospace; color:#ff0; font-size:10px;
+    background:rgba(0,0,0,0.6); padding:4px 6px;
+    white-space:pre; pointer-events:none; z-index:9998;
+  }
   #gyro-btn, #invert-gyro-btn{
     position:fixed; right:16px;
     font-family:monospace; font-size:11px; color:#bfe6bf;
@@ -74,6 +80,7 @@
 </head>
 <body>
 <div id="hud">FPS: <span id="fps">0</span> &nbsp; pos: <span id="pos">-</span></div>
+<div id="debug-hud" class="touch-ui"></div>
 <pre id="screen"></pre>
 <div id="hint">WASD / Arrows: move &nbsp; Q/E: turn &nbsp; Click + mouse: look</div>
 <div id="touch-hint" class="touch-ui">Left: move &nbsp; Right: drag to look</div>
@@ -216,8 +223,10 @@ const joystickNub = document.getElementById("joystick-nub");
 let joystickTouchId = null, joyDX = 0, joyDY = 0;
 let joystickCenterX = 0, joystickCenterY = 0;
 let lookTouchId = null, lookLastX = 0, lookLastY = 0;
+let debugTouchStarts = 0, debugTouchMoves = 0, debugTouchEnds = 0;
 
 function onTouchStart(e) {
+  debugTouchStarts++;
   for (const t of e.changedTouches) {
     if (t.target.closest("#gyro-btn, #invert-gyro-btn")) continue;
     if (t.clientX < window.innerWidth / 2) {
@@ -236,6 +245,7 @@ function onTouchStart(e) {
   }
 }
 function onTouchMove(e) {
+  debugTouchMoves++;
   for (const t of e.changedTouches) {
     if (t.identifier === joystickTouchId) {
       e.preventDefault();
@@ -253,6 +263,7 @@ function onTouchMove(e) {
   }
 }
 function onTouchEnd(e) {
+  debugTouchEnds++;
   for (const t of e.changedTouches) {
     if (t.identifier === joystickTouchId) {
       joystickTouchId = null; joyDX = 0; joyDY = 0;
@@ -469,6 +480,10 @@ function render() {
   screenEl.innerHTML = html;
   document.getElementById("pos").textContent =
     `${player.x.toFixed(1)}, ${player.y.toFixed(1)} @ ${(player.angle * 180 / Math.PI).toFixed(0)}°`;
+  document.getElementById("debug-hud").textContent =
+    `starts:${debugTouchStarts} moves:${debugTouchMoves} ends:${debugTouchEnds}\n` +
+    `joyId:${joystickTouchId} joyDX:${joyDX.toFixed(2)} joyDY:${joyDY.toFixed(2)}\n` +
+    `lookId:${lookTouchId} gyro:${gyroEnabled} pitch:${player.pitch.toFixed(1)}`;
 }
 
 // ---------------- LOOP ----------------
