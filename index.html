@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>LokKingdom</title>
+<style>
+  html,body{margin:0;height:100%;background:#05070a;overflow:hidden;}
+  #screen{
+    font-family: "Courier New", monospace;
+    font-weight:bold;
+    white-space:pre;
+    line-height:1.0;
+    background:#05070a;
+    letter-spacing:0px;
+    user-select:none;
+    -webkit-user-select:none;
+    display:block;
+    margin:0 auto;
+    font-size:8px;
+  }
+  #hud{
+    position:fixed; top:6px; left:8px;
+    font-family:monospace; color:#7fdc7f; font-size:12px;
+    opacity:0.85; pointer-events:none;
+  }
+  #hint{
+    position:fixed; bottom:6px; left:8px;
+    font-family:monospace; color:#557; font-size:11px;
+    opacity:0.75; pointer-events:none;
+  }
+  .touch-ui{ display:none; }
+  @media (pointer: coarse){
+    .touch-ui{ display:block; }
+    #hint{ display:none; } /* replaced by #touch-hint on touch devices */
+  }
+  #touch-hint{
+    position:fixed; bottom:6px; right:8px;
+    font-family:monospace; color:#557; font-size:11px;
+    opacity:0.75; pointer-events:none; text-align:right;
+  }
+  #joystick-base{
+    position:fixed; left:26px; bottom:26px;
+    width:110px; height:110px; border-radius:50%;
+    background:rgba(127,220,127,0.08);
+    border:2px solid rgba(127,220,127,0.35);
+    touch-action:none;
+  }
+  #joystick-nub{
+    position:absolute; left:50%; top:50%;
+    width:46px; height:46px; margin:-23px 0 0 -23px;
+    border-radius:50%;
+    background:rgba(127,220,127,0.35);
+    border:2px solid rgba(127,220,127,0.6);
+    pointer-events:none;
+  }
+  #gyro-btn{
+    position:fixed; right:16px; top:16px;
+    font-family:monospace; font-size:11px; color:#bfe6bf;
+    background:rgba(20,30,20,0.7);
+    border:1px solid rgba(127,220,127,0.4);
+    border-radius:6px; padding:6px 10px;
+  }
+</style>
+</head>
+<body>
+<div id="hud">FPS: <span id="fps">0</span> &nbsp; pos: <span id="pos">-</span></div>
+<pre id="screen"></pre>
+<div id="hint">WASD / Arrows: move &nbsp; Q/E: turn &nbsp; Click + mouse: look</div>
+<div id="touch-hint" class="touch-ui">Left: move &nbsp; Right: drag to look</div>
+<div id="joystick-base" class="touch-ui"><div id="joystick-nub"></div></div>
+<button id="gyro-btn" class="touch-ui">Enable Gyro Look</button>
+
+<script>
+/* =====================================================================
+   ASCII 3D ENGINE v2 — single file, zero dependencies
+   Grid-based world -> per-column DDA raycast -> ASCII wall/floor/sky
+   + variable wall height per material + colored output + billboard
+   sprites (trees/npcs) with correct depth occlusion.
+
+   File layout is intentionally flat (one HTML file = the whole game).
+   See README.md in this repo for the expansion roadmap.
+   ===================================================================== */
+
+// ---------------- CONFIG ----------------
+const COLS = 120, ROWS = 56;
+const FOV = Math.PI / 3;
+const MOVE_SPEED = 3.2, TURN_SPEED = 2.4, MOUSE_SENS = 0.0025;
+const JOYSTICK_RADIUS = 45;
+const TOUCH_LOOK_SENS_X = 0.006, TOUCH_LOOK_SENS_Y = 0.03;
+const GYRO_TURN_SPEED = 2.4, GYRO_PITCH_RANGE = 8, GYRO_TILT_RANGE_DEG = 45;
+
+// ---------------- WORLD MAP ----------------
+// 0 = empty. 1/2/3 = wall materials (color + height come from MATERIALS below).
+const MAP = [
+  "1111111111111111111111111",
+  "1..........1.......1....1",
+  "1..111111..1..111111..1.1",
+  "1..1....1..1..1....1..1.1",
+  "1..1.222.1.1..1.222.1.1.1",
+  "1..1.2.2.1.1..1.2.2.1.1.1",
+  "1..1.222.1....1.222.1.1.1",
+  "1..1......1111.......1.1",
+  "1..111111111111111111.1.1",
+  "1.......................1",
+  "1.33333333.....33333333.1",
+  "1.3.....3.......3.....3.1",
+  "1.3.....3.......3.....3.1",
+  "1.33333333.....33333333.1",
+  "1.......................1",
+  "1111111111111111111111111",
+];
+const MAPW = MAP[0].length, MAPH = MAP.length;
+
+// Per-material appearance: relative height (1 = full room height) and base color.
+const MATERIALS = {
+  1: { height: 1.0, colorNS: "#4fae4f", colorEW: "#3d8f3d" }, // outer walls
+  2: { height: 1.0, colorNS: "#3fa0b0", colorEW: "#2f7d8a" }, // inner room
+  3: { height: 0.55, colorNS: "#c98f3f", colorEW: "#a4712e" }, // low pillars
+};
+
+function tileAt(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y);
+  if (xi < 0 || yi < 0 || xi >= MAPW || yi >= MAPH) return 1;
+  const ch = MAP[yi][xi];
+  return ch === "." ? 0 : parseInt(ch, 10);
+}
+
+// ---------------- SPRITES (billboards) ----------------
+// Simple world-space objects drawn as a small glyph blob, occluded by the
+// depth buffer collected during the wall pass. Expand: add per-type shapes,
+// animation frames, or swap for real sub-images once you outgrow ASCII.
+const SPRITES = [
+  { x: 6.5, y: 9.5, type: "tree" },
+  { x: 9.5, y: 9.5, type: "tree" },
+  { x: 18.5, y: 9.5, type: "tree" },
+  { x: 21.5, y: 9.5, type: "tree" },
+  { x: 13.5, y: 1.5, type: "npc" },
+];
+const SPRITE_GLYPHS = {
+  tree: { rows: ["^", "*", "|"], color: "#3fbf5f" },
+  npc:  { rows: ["o", "|"],      color: "#e0c060" },
+};
+
+// ---------------- CHARACTER PALETTES ----------------
+const WALL_SHADES = ["#", "%", "*", "+", "=", "-", ":", "."]; // near -> far
+const FLOOR_CHARS = [",", ".", "`", " "];
+const SKY_CHAR = " ";
+
+function shadeIndex(dist, maxDist, levels) {
+  const t = Math.min(1, dist / maxDist);
+  return Math.min(levels - 1, Math.floor(t * levels));
+}
+// darken a hex color toward black by factor 0..1
+function darken(hex, factor) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.round(((n >> 16) & 255) * (1 - factor));
+  const g = Math.round(((n >> 8) & 255) * (1 - factor));
+  const b = Math.round((n & 255) * (1 - factor));
+  return `rgb(${r},${g},${b})`;
+}
+
+// ---------------- PLAYER ----------------
+const player = { x: 2.5, y: 1.5, angle: 0, pitch: 0 };
+
+// ---------------- INPUT ----------------
+const keys = {};
+window.addEventListener("keydown", e => { keys[e.key.toLowerCase()] = true; });
+window.addEventListener("keyup",   e => { keys[e.key.toLowerCase()] = false; });
+
+const screenEl = document.getElementById("screen");
+document.body.addEventListener("click", () => {
+  screenEl.requestPointerLock && screenEl.requestPointerLock();
+});
+document.addEventListener("mousemove", e => {
+  if (document.pointerLockElement === screenEl) {
+    player.angle += e.movementX * MOUSE_SENS;
+    player.pitch -= e.movementY * 0.05;
+    player.pitch = Math.max(-8, Math.min(8, player.pitch));
+  }
+});
+
+// ---- touch: left half = virtual joystick (move), right half = drag to look ----
+const joystickBase = document.getElementById("joystick-base");
+const joystickNub = document.getElementById("joystick-nub");
+let joystickTouchId = null, joyDX = 0, joyDY = 0;
+let lookTouchId = null, lookLastX = 0, lookLastY = 0;
+
+function onTouchStart(e) {
+  for (const t of e.changedTouches) {
+    if (t.target.closest("#gyro-btn")) continue;
+    if (t.clientX < window.innerWidth / 2) {
+      if (joystickTouchId !== null) continue;
+      joystickTouchId = t.identifier;
+      joyDX = 0; joyDY = 0;
+    } else {
+      if (lookTouchId !== null) continue;
+      lookTouchId = t.identifier;
+      lookLastX = t.clientX; lookLastY = t.clientY;
+    }
+  }
+}
+function onTouchMove(e) {
+  for (const t of e.changedTouches) {
+    if (t.identifier === joystickTouchId) {
+      e.preventDefault();
+      const dx = Math.max(-JOYSTICK_RADIUS, Math.min(JOYSTICK_RADIUS, t.clientX - (joystickBase.offsetLeft + joystickBase.offsetWidth / 2)));
+      const dy = Math.max(-JOYSTICK_RADIUS, Math.min(JOYSTICK_RADIUS, t.clientY - (joystickBase.offsetTop + joystickBase.offsetHeight / 2)));
+      joyDX = dx / JOYSTICK_RADIUS; joyDY = dy / JOYSTICK_RADIUS;
+      joystickNub.style.transform = `translate(${dx}px, ${dy}px)`;
+    } else if (t.identifier === lookTouchId) {
+      e.preventDefault();
+      player.angle += (t.clientX - lookLastX) * TOUCH_LOOK_SENS_X;
+      player.pitch -= (t.clientY - lookLastY) * TOUCH_LOOK_SENS_Y;
+      player.pitch = Math.max(-8, Math.min(8, player.pitch));
+      lookLastX = t.clientX; lookLastY = t.clientY;
+    }
+  }
+}
+function onTouchEnd(e) {
+  for (const t of e.changedTouches) {
+    if (t.identifier === joystickTouchId) {
+      joystickTouchId = null; joyDX = 0; joyDY = 0;
+      joystickNub.style.transform = "translate(0, 0)";
+    } else if (t.identifier === lookTouchId) {
+      lookTouchId = null;
+    }
+  }
+}
+document.addEventListener("touchstart", onTouchStart, { passive: true });
+document.addEventListener("touchmove", onTouchMove, { passive: false });
+document.addEventListener("touchend", onTouchEnd);
+document.addEventListener("touchcancel", onTouchEnd);
+
+// ---- gyro: tilt-to-look, calibrated to the orientation held when enabled ----
+const gyroBtn = document.getElementById("gyro-btn");
+let gyroEnabled = false, gyroYaw = 0, gyroPitch = 0;
+let gyroNeutralBeta = null, gyroNeutralGamma = null;
+
+function onDeviceOrientation(e) {
+  if (e.beta === null || e.gamma === null) return;
+  if (gyroNeutralBeta === null) { gyroNeutralBeta = e.beta; gyroNeutralGamma = e.gamma; }
+  const dGamma = Math.max(-GYRO_TILT_RANGE_DEG, Math.min(GYRO_TILT_RANGE_DEG, e.gamma - gyroNeutralGamma));
+  const dBeta = Math.max(-GYRO_TILT_RANGE_DEG, Math.min(GYRO_TILT_RANGE_DEG, e.beta - gyroNeutralBeta));
+  gyroYaw = dGamma / GYRO_TILT_RANGE_DEG;
+  gyroPitch = dBeta / GYRO_TILT_RANGE_DEG;
+}
+function startGyro() {
+  gyroNeutralBeta = null; gyroNeutralGamma = null;
+  window.addEventListener("deviceorientation", onDeviceOrientation);
+  gyroEnabled = true;
+  gyroBtn.textContent = "Gyro: On (tap to recenter)";
+}
+gyroBtn.addEventListener("click", () => {
+  if (gyroEnabled) { gyroNeutralBeta = null; gyroNeutralGamma = null; return; } // recenter
+  if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+    DeviceOrientationEvent.requestPermission().then(state => {
+      if (state === "granted") startGyro();
+    }).catch(() => {});
+  } else if (window.DeviceOrientationEvent) {
+    startGyro();
+  }
+});
+
+function tryMove(nx, ny) {
+  if (tileAt(nx, player.y) === 0) player.x = nx;
+  if (tileAt(player.x, ny) === 0) player.y = ny;
+}
+
+function update(dt) {
+  let moveX = 0, moveY = 0;
+  const fwdX = Math.cos(player.angle), fwdY = Math.sin(player.angle);
+  const rightX = Math.cos(player.angle + Math.PI/2), rightY = Math.sin(player.angle + Math.PI/2);
+
+  if (keys["w"] || keys["arrowup"])    { moveX += fwdX; moveY += fwdY; }
+  if (keys["s"] || keys["arrowdown"])  { moveX -= fwdX; moveY -= fwdY; }
+  if (keys["a"])                       { moveX -= rightX; moveY -= rightY; }
+  if (keys["d"])                       { moveX += rightX; moveY += rightY; }
+  if (keys["q"] || keys["arrowleft"])  player.angle -= TURN_SPEED * dt;
+  if (keys["e"] || keys["arrowright"]) player.angle += TURN_SPEED * dt;
+
+  if (joystickTouchId !== null) { moveX += fwdX * -joyDY + rightX * joyDX; moveY += fwdY * -joyDY + rightY * joyDX; }
+
+  if (gyroEnabled) {
+    player.angle += gyroYaw * GYRO_TURN_SPEED * dt;
+    player.pitch = gyroPitch * GYRO_PITCH_RANGE;
+  }
+
+  const len = Math.hypot(moveX, moveY);
+  if (len > 0) {
+    const scale = Math.min(1, len) / len * MOVE_SPEED * dt;
+    moveX = moveX * scale;
+    moveY = moveY * scale;
+    tryMove(player.x + moveX, player.y + moveY);
+  }
+}
+
+// ---------------- RAYCAST (DDA) ----------------
+function castRay(rayAngle) {
+  const dirX = Math.cos(rayAngle), dirY = Math.sin(rayAngle);
+  let mapX = Math.floor(player.x), mapY = Math.floor(player.y);
+
+  const deltaDistX = Math.abs(1 / (dirX || 1e-9));
+  const deltaDistY = Math.abs(1 / (dirY || 1e-9));
+
+  let stepX, sideDistX, stepY, sideDistY;
+  if (dirX < 0) { stepX = -1; sideDistX = (player.x - mapX) * deltaDistX; }
+  else          { stepX = 1;  sideDistX = (mapX + 1 - player.x) * deltaDistX; }
+  if (dirY < 0) { stepY = -1; sideDistY = (player.y - mapY) * deltaDistY; }
+  else          { stepY = 1;  sideDistY = (mapY + 1 - player.y) * deltaDistY; }
+
+  let hit = 0, side = 0, material = 0, guard = 0;
+  while (!hit && guard++ < 64) {
+    if (sideDistX < sideDistY) { sideDistX += deltaDistX; mapX += stepX; side = 0; }
+    else                        { sideDistY += deltaDistY; mapY += stepY; side = 1; }
+    material = tileAt(mapX, mapY);
+    if (material > 0) hit = 1;
+  }
+
+  const perpDist = side === 0
+    ? (mapX - player.x + (1 - stepX) / 2) / (dirX || 1e-9)
+    : (mapY - player.y + (1 - stepY) / 2) / (dirY || 1e-9);
+
+  return { dist: Math.max(0.0001, Math.abs(perpDist)), side, material };
+}
+
+// ---------------- RENDER ----------------
+function render() {
+  const chGrid = new Array(ROWS);
+  const colGrid = new Array(ROWS);
+  for (let r = 0; r < ROWS; r++) {
+    chGrid[r] = new Array(COLS).fill(SKY_CHAR);
+    colGrid[r] = new Array(COLS).fill("#05070a");
+  }
+  const depthBuffer = new Array(COLS).fill(Infinity);
+  const horizon = Math.floor(ROWS / 2 + player.pitch);
+
+  // ---- wall + floor pass ----
+  for (let col = 0; col < COLS; col++) {
+    const cameraX = (2 * col) / COLS - 1;
+    const rayAngle = player.angle + Math.atan(cameraX * Math.tan(FOV / 2));
+    const { dist, side, material } = castRay(rayAngle);
+    const correctedDist = dist * Math.cos(rayAngle - player.angle);
+    depthBuffer[col] = correctedDist;
+
+    const mat = MATERIALS[material] || MATERIALS[1];
+    const wallHeight = Math.min(ROWS, Math.floor((ROWS / (correctedDist + 0.0001)) * mat.height));
+    const wallTop = Math.max(0, horizon - Math.floor(wallHeight / 2));
+    const wallBottom = Math.min(ROWS - 1, horizon + Math.floor(wallHeight / 2));
+
+    const shade = shadeIndex(correctedDist, 16, WALL_SHADES.length);
+    const wallChar = WALL_SHADES[shade];
+    const baseColor = side === 0 ? mat.colorNS : mat.colorEW;
+    const wallColor = darken(baseColor, shade / WALL_SHADES.length * 0.7);
+
+    for (let row = 0; row < ROWS; row++) {
+      if (row < wallTop) {
+        chGrid[row][col] = SKY_CHAR;
+      } else if (row <= wallBottom) {
+        chGrid[row][col] = wallChar;
+        colGrid[row][col] = wallColor;
+      } else {
+        const floorDepth = row - horizon;
+        const fi = Math.min(FLOOR_CHARS.length - 1, Math.floor(floorDepth / 5));
+        chGrid[row][col] = FLOOR_CHARS[FLOOR_CHARS.length - 1 - fi];
+        colGrid[row][col] = darken("#6f5a3f", 0.15 + fi * 0.15);
+      }
+    }
+  }
+
+  // ---- sprite pass (billboards, depth-tested against the wall pass) ----
+  for (const spr of SPRITES) {
+    const dx = spr.x - player.x, dy = spr.y - player.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 0.15) continue;
+    let angleTo = Math.atan2(dy, dx) - player.angle;
+    while (angleTo > Math.PI) angleTo -= 2 * Math.PI;
+    while (angleTo < -Math.PI) angleTo += 2 * Math.PI;
+    if (Math.abs(angleTo) > FOV / 1.4) continue; // outside view cone
+
+    const screenXNorm = Math.tan(angleTo) / Math.tan(FOV / 2); // -1..1
+    const col = Math.floor(((screenXNorm + 1) / 2) * COLS);
+    if (col < 0 || col >= COLS) continue;
+    if (dist >= depthBuffer[col]) continue; // occluded by a wall
+
+    const glyph = SPRITE_GLYPHS[spr.type] || SPRITE_GLYPHS.tree;
+    const size = Math.max(1, Math.floor(ROWS / (dist + 0.0001) * 0.5));
+    const halfW = Math.max(1, Math.floor(size / 3));
+    const baseRow = horizon + Math.floor(size / 2);
+
+    for (let ri = 0; ri < glyph.rows.length; ri++) {
+      const rowsPerGlyphLine = Math.max(1, Math.floor(size / glyph.rows.length));
+      for (let rr = 0; rr < rowsPerGlyphLine; rr++) {
+        const row = baseRow - size + ri * rowsPerGlyphLine + rr;
+        if (row < 0 || row >= ROWS) continue;
+        for (let cc = col - halfW; cc <= col + halfW; cc++) {
+          if (cc < 0 || cc >= COLS) continue;
+          if (dist >= depthBuffer[cc]) continue;
+          chGrid[row][cc] = glyph.rows[ri];
+          colGrid[row][cc] = darken(glyph.color, Math.min(0.6, dist / 20));
+        }
+      }
+    }
+  }
+
+  // ---- flatten to colored HTML (run-length group by color to limit spans) ----
+  let html = "";
+  for (let r = 0; r < ROWS; r++) {
+    let runColor = null, runText = "";
+    for (let c = 0; c < COLS; c++) {
+      const color = colGrid[r][c];
+      const ch = chGrid[r][c];
+      if (color !== runColor) {
+        if (runText) html += `<span style="color:${runColor}">${runText}</span>`;
+        runColor = color; runText = ch;
+      } else {
+        runText += ch;
+      }
+    }
+    if (runText) html += `<span style="color:${runColor}">${runText}</span>`;
+    html += "\n";
+  }
+  screenEl.innerHTML = html;
+  document.getElementById("pos").textContent =
+    `${player.x.toFixed(1)}, ${player.y.toFixed(1)} @ ${(player.angle * 180 / Math.PI).toFixed(0)}°`;
+}
+
+// ---------------- LOOP ----------------
+let lastTime = performance.now();
+let fpsFrames = 0, fpsTimer = 0;
+function loop(now) {
+  const dt = Math.min(0.05, (now - lastTime) / 1000);
+  lastTime = now;
+
+  update(dt);
+  render();
+
+  fpsFrames++; fpsTimer += dt;
+  if (fpsTimer >= 0.5) {
+    document.getElementById("fps").textContent = Math.round(fpsFrames / fpsTimer);
+    fpsFrames = 0; fpsTimer = 0;
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
