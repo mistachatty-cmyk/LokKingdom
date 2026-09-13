@@ -20,17 +20,21 @@ mouse look to behave consistently across browsers).
 - `W A S D` / arrow keys — move
 - `Q` / `E` — turn
 - Click the screen, then move the mouse — free look (pointer lock)
-- **Touch** (phones/tablets): press anywhere on the left half of the
-  screen to move — a virtual joystick pops up right where you touched
-  down (it isn't fixed to a corner) — and drag a finger on the right
-  half to look around. Both work at once since each is tracked by its
+- **Touch** (phones/tablets): dual joysticks, both dynamic — a stick
+  pops up right where you touch down rather than sitting fixed in a
+  corner. Left half of the screen moves, right half looks (holding it
+  turns/looks continuously, like a real analog stick — the further you
+  push, the faster). Both work at once since each is tracked by its
   own touch point.
 - **Gyro** (touch devices): tap "Enable Gyro Look" (top-right) to look
-  around by tilting the device instead of dragging. iOS asks for a
-  motion-sensor permission the first time — that's the browser, not
-  this app. Tilt is calibrated to however you're holding the device
-  when you enable it; tap the button again to recenter. "Invert Gyro"
-  (below it, on by default) flips the tilt-up/down direction, like an
+  around by tilting the device instead of using the right stick — tap
+  again to turn it back off. iOS asks for a motion-sensor permission
+  the first time — that's the browser, not this app. Tilt is
+  calibrated to however you're holding the device when you enable it.
+  Grabbing the right (look) stick always takes over from gyro while
+  it's held, so the two never fight — release it and gyro resumes
+  smoothly from wherever you ended up, no snap. "Invert Gyro" (below
+  it, on by default) flips the tilt-up/down direction, like an
   inverted flight-stick — the default most gyro-look games ship with.
 
 ## How it works

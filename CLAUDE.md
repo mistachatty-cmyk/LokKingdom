@@ -56,24 +56,49 @@ Desktop: `W A S D` / arrow keys to move, `Q`/`E` to turn, click the
 canvas then move the mouse to look (pointer lock).
 
 Touch (shown only on `pointer: coarse` devices via CSS media query):
-touching down anywhere on the left half of the screen spawns a virtual
-joystick right at that point (`#joystick-base` is positioned via
-inline `left`/`top` set in `onTouchStart`, not fixed in CSS) and drives
-forward/back/strafe the same way WASD does; dragging a finger anywhere
-on the right half of the screen turns/looks the same way a mouse does.
-Both are tracked by touch `identifier` so they work simultaneously as
-two fingers.
+dual dynamic joysticks, both positioned via inline `left`/`top` set in
+`onTouchStart` (not fixed in CSS) so each spawns right where you touch
+down rather than sitting in a fixed corner. Left half of the screen is
+`joystickTouchId`/`joyDX`/`joyDY`, driving forward/back/strafe the same
+way WASD does. Right half is `lookTouchId`/`lookJoyDX`/`lookJoyDY`,
+applied in `update()` as a continuous rate (`LOOK_TURN_SPEED`,
+`LOOK_PITCH_SPEED`) rather than a 1:1 drag — hold it deflected and it
+keeps turning, like a real analog stick, matching the deliberate L=move
+R=look convention (never swap this without being asked; it's the
+universal mobile/console FPS layout). Both sticks are tracked by touch
+`identifier` so they work simultaneously as two fingers.
+
+iOS Safari can occasionally fail to deliver `touchend`/`touchcancel`
+for a touch, permanently orphaning `joystickTouchId`/`lookTouchId` so
+no new real touch can ever match it (this was a real shipped bug — see
+git log). `releaseStaleTouches()` cross-checks both ids against the
+browser's own live `e.touches` on every `touchstart`/`touchmove` and
+releases anything no longer actually present; don't remove this.
 
 Gyro: a button (touch devices only) requests `DeviceOrientationEvent`
-permission (required gesture-gated on iOS Safari) and then steers look
-by tilting the device — tilt is measured relative to whatever angle
-the device was held at when gyro was enabled (calibrated on enable,
-recalibrated by tapping the button again), not absolute compass
-heading, since raw compass data is unreliable across devices/browsers.
-A second button, "Invert Gyro", flips the tilt-to-pitch sign
+permission (required gesture-gated on iOS Safari), then toggles fully
+on/off on each tap (`startGyro()`/`stopGyro()`) — steers look by
+tilting the device, tilt measured relative to whatever angle the
+device was held at when gyro was (re-)enabled (recalibrated every time
+you turn it on), not absolute compass heading, since raw compass data
+is unreliable across devices/browsers. Yaw and pitch are both
+proportional to current tilt-from-neutral (bounded, self-centering),
+never accumulated over time — an earlier accumulating-rate version let
+any incidental tilt (e.g. a thumb reaching for the joystick) silently
+spin the player away over a few seconds. **The right (look) stick
+always takes priority over gyro while actively held** — `update()`
+only applies gyro's angle/pitch when `lookTouchId === null` — and
+`gyroBaseAngle` is continuously resynced to the current angle while the
+stick is held, so gyro resumes smoothly (no snap) the moment you let
+go. A second button, "Invert Gyro", flips the tilt-to-pitch sign
 (`gyroInverted`, defaults to `true`) — most gyro-look implementations
 default to inverted (tilt back = look down), so that's the shipped
-default here too; it only affects gyro pitch, not mouse/touch look.
+default here too; it only affects gyro pitch, not stick/mouse look.
+
+A yellow on-screen debug HUD (`#debug-hud`, touch devices only) shows
+live touch-event counts and both sticks'/gyro's current state — keep it
+working; it's what actually diagnosed the orphaned-touch bug above when
+a phone couldn't be debugged any other way.
 
 ## How to run / test
 

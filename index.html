@@ -61,6 +61,24 @@
     border:2px solid rgba(127,220,127,0.6);
     pointer-events:none;
   }
+  #look-joystick-base{
+    position:fixed; left:0; top:0;
+    width:110px; height:110px; border-radius:50%;
+    background:rgba(120,180,255,0.08);
+    border:2px solid rgba(120,180,255,0.35);
+    touch-action:none;
+    transform:translate(-50%,-50%);
+    opacity:0;
+  }
+  #look-joystick-base.active{ opacity:1; }
+  #look-joystick-nub{
+    position:absolute; left:50%; top:50%;
+    width:46px; height:46px; margin:-23px 0 0 -23px;
+    border-radius:50%;
+    background:rgba(120,180,255,0.35);
+    border:2px solid rgba(120,180,255,0.6);
+    pointer-events:none;
+  }
   #debug-hud{
     position:fixed; top:28px; left:8px;
     font-family:monospace; color:#ff0; font-size:10px;
@@ -83,8 +101,9 @@
 <div id="debug-hud" class="touch-ui"></div>
 <pre id="screen"></pre>
 <div id="hint">WASD / Arrows: move &nbsp; Q/E: turn &nbsp; Click + mouse: look</div>
-<div id="touch-hint" class="touch-ui">Left: move &nbsp; Right: drag to look</div>
+<div id="touch-hint" class="touch-ui">Left: move &nbsp; Right: look</div>
 <div id="joystick-base" class="touch-ui"><div id="joystick-nub"></div></div>
+<div id="look-joystick-base" class="touch-ui"><div id="look-joystick-nub"></div></div>
 <button id="gyro-btn" class="touch-ui">Enable Gyro Look</button>
 <button id="invert-gyro-btn" class="touch-ui">Invert Gyro: On</button>
 
@@ -121,7 +140,7 @@ const COLS = 120, ROWS = 56;
 const FOV = Math.PI / 3;
 const MOVE_SPEED = 3.2, TURN_SPEED = 2.4, MOUSE_SENS = 0.0025;
 const JOYSTICK_RADIUS = 45;
-const TOUCH_LOOK_SENS_X = 0.006, TOUCH_LOOK_SENS_Y = 0.03;
+const LOOK_TURN_SPEED = 2.2, LOOK_PITCH_SPEED = 6; // rad/sec, pitch-units/sec at full stick deflection
 const GYRO_YAW_RANGE = Math.PI / 2, GYRO_PITCH_RANGE = 8, GYRO_TILT_RANGE_DEG = 45;
 
 // ---------------- WORLD MAP ----------------
@@ -217,12 +236,20 @@ document.addEventListener("mousemove", e => {
   }
 });
 
-// ---- touch: left half = virtual joystick (move), right half = drag to look ----
+// ---- touch: left half = move joystick, right half = look joystick ----
+// Both are dynamic (spawn wherever you touch down) and bounded (continuous
+// output while held, like a real analog stick) rather than a 1:1 drag — the
+// look stick takes priority over gyro whenever it's actively held, see update().
 const joystickBase = document.getElementById("joystick-base");
 const joystickNub = document.getElementById("joystick-nub");
 let joystickTouchId = null, joyDX = 0, joyDY = 0;
 let joystickCenterX = 0, joystickCenterY = 0;
-let lookTouchId = null, lookLastX = 0, lookLastY = 0;
+
+const lookJoystickBase = document.getElementById("look-joystick-base");
+const lookJoystickNub = document.getElementById("look-joystick-nub");
+let lookTouchId = null, lookJoyDX = 0, lookJoyDY = 0;
+let lookJoystickCenterX = 0, lookJoystickCenterY = 0;
+
 let debugTouchStarts = 0, debugTouchMoves = 0, debugTouchEnds = 0;
 
 // iOS Safari can fail to deliver touchend/touchcancel for a touch in rare cases,
@@ -240,7 +267,9 @@ function releaseStaleTouches(e) {
     joystickBase.classList.remove("active");
   }
   if (lookTouchId !== null && !isTouchStillActive(e, lookTouchId)) {
-    lookTouchId = null;
+    lookTouchId = null; lookJoyDX = 0; lookJoyDY = 0;
+    lookJoystickNub.style.transform = "translate(0, 0)";
+    lookJoystickBase.classList.remove("active");
   }
 }
 
@@ -260,7 +289,11 @@ function onTouchStart(e) {
     } else {
       if (lookTouchId !== null) continue;
       lookTouchId = t.identifier;
-      lookLastX = t.clientX; lookLastY = t.clientY;
+      lookJoyDX = 0; lookJoyDY = 0;
+      lookJoystickCenterX = t.clientX; lookJoystickCenterY = t.clientY;
+      lookJoystickBase.style.left = t.clientX + "px";
+      lookJoystickBase.style.top = t.clientY + "px";
+      lookJoystickBase.classList.add("active");
     }
   }
 }
@@ -276,10 +309,10 @@ function onTouchMove(e) {
       joystickNub.style.transform = `translate(${dx}px, ${dy}px)`;
     } else if (t.identifier === lookTouchId) {
       e.preventDefault();
-      player.angle += (t.clientX - lookLastX) * TOUCH_LOOK_SENS_X;
-      player.pitch -= (t.clientY - lookLastY) * TOUCH_LOOK_SENS_Y;
-      player.pitch = Math.max(-8, Math.min(8, player.pitch));
-      lookLastX = t.clientX; lookLastY = t.clientY;
+      const dx = Math.max(-JOYSTICK_RADIUS, Math.min(JOYSTICK_RADIUS, t.clientX - lookJoystickCenterX));
+      const dy = Math.max(-JOYSTICK_RADIUS, Math.min(JOYSTICK_RADIUS, t.clientY - lookJoystickCenterY));
+      lookJoyDX = dx / JOYSTICK_RADIUS; lookJoyDY = dy / JOYSTICK_RADIUS;
+      lookJoystickNub.style.transform = `translate(${dx}px, ${dy}px)`;
     }
   }
 }
@@ -291,7 +324,9 @@ function onTouchEnd(e) {
       joystickNub.style.transform = "translate(0, 0)";
       joystickBase.classList.remove("active");
     } else if (t.identifier === lookTouchId) {
-      lookTouchId = null;
+      lookTouchId = null; lookJoyDX = 0; lookJoyDY = 0;
+      lookJoystickNub.style.transform = "translate(0, 0)";
+      lookJoystickBase.classList.remove("active");
     }
   }
 }
@@ -321,13 +356,19 @@ function onDeviceOrientation(e) {
   gyroPitch = dBeta / GYRO_TILT_RANGE_DEG;
 }
 function startGyro() {
-  gyroNeutralBeta = null; gyroNeutralGamma = null;
+  gyroNeutralBeta = null; gyroNeutralGamma = null; // recalibrates to however you're holding it now
   window.addEventListener("deviceorientation", onDeviceOrientation);
   gyroEnabled = true;
-  gyroBtn.textContent = "Gyro: On (tap to recenter)";
+  gyroBtn.textContent = "Gyro: On (tap to turn off)";
+}
+function stopGyro() {
+  window.removeEventListener("deviceorientation", onDeviceOrientation);
+  gyroEnabled = false;
+  gyroYaw = 0; gyroPitch = 0;
+  gyroBtn.textContent = "Enable Gyro Look";
 }
 gyroBtn.addEventListener("click", () => {
-  if (gyroEnabled) { gyroNeutralBeta = null; gyroNeutralGamma = null; return; } // recenter
+  if (gyroEnabled) { stopGyro(); return; }
   if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
     DeviceOrientationEvent.requestPermission().then(state => {
       if (state === "granted") startGyro();
@@ -356,7 +397,14 @@ function update(dt) {
 
   if (joystickTouchId !== null) { moveX += fwdX * -joyDY + rightX * joyDX; moveY += fwdY * -joyDY + rightY * joyDX; }
 
-  if (gyroEnabled) {
+  if (lookTouchId !== null) {
+    // the look stick takes priority over gyro whenever it's actually held —
+    // holding it applies a continuous turn/look rate, like a real analog stick
+    player.angle += lookJoyDX * LOOK_TURN_SPEED * dt;
+    player.pitch -= lookJoyDY * LOOK_PITCH_SPEED * dt;
+    player.pitch = Math.max(-8, Math.min(8, player.pitch));
+    if (gyroEnabled) gyroBaseAngle = player.angle - gyroYaw * GYRO_YAW_RANGE; // keep gyro's base in sync so it resumes smoothly (no snap) on release
+  } else if (gyroEnabled) {
     // proportional to current tilt (like pitch below), not accumulated over time —
     // an accumulating rate meant any incidental tilt (e.g. reaching for the
     // joystick with a thumb) silently spun the player away over a few seconds
@@ -504,7 +552,8 @@ function render() {
   document.getElementById("debug-hud").textContent =
     `starts:${debugTouchStarts} moves:${debugTouchMoves} ends:${debugTouchEnds}\n` +
     `joyId:${joystickTouchId} joyDX:${joyDX.toFixed(2)} joyDY:${joyDY.toFixed(2)}\n` +
-    `lookId:${lookTouchId} gyro:${gyroEnabled} pitch:${player.pitch.toFixed(1)}`;
+    `lookId:${lookTouchId} lookDX:${lookJoyDX.toFixed(2)} lookDY:${lookJoyDY.toFixed(2)}\n` +
+    `gyro:${gyroEnabled} pitch:${player.pitch.toFixed(1)}`;
 }
 
 // ---------------- LOOP ----------------
