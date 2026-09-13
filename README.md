@@ -1,10 +1,16 @@
 # LokKingdom
 
-A tiny, zero-dependency 3D engine that renders a grid-based world as
+A tiny, zero-dependency 3D open-world engine that renders a grid-based realm as
 colored ASCII/text characters — one raycast per screen column, no
 Three.js, no models, no build step. The whole game is a single
 `index.html` file you can open directly in a browser or drop onto any
 static host.
+
+The current realm is a deterministic 96×96 medieval region containing
+Lokhaven Hold, two villages, an old watch, a quarry, wilderness, and a
+road network. It is a compact first slice of a much larger goal: player-built
+settlements, castles and kingdoms, recruitable followers, armies, and
+Bannerlord-inspired wars that remain practical in a mobile browser.
 
 Inspired by the "walkable ASCII city in one HTML file" trend — built
 from scratch as a small, expandable foundation rather than a tech demo.
@@ -39,8 +45,12 @@ mouse look to behave consistently across browsers).
 
 ## How it works
 
-- **World**: a flat array of strings (`MAP`) where each character is a
-  tile — `.` empty, digits `1`/`2`/`3` are wall materials.
+- **World**: compact `MAP` and `GROUND` typed arrays use one byte per tile.
+  `MAP` stores collision/wall materials while `GROUND` independently marks
+  meadow, roads, settlement ground, and resource terrain.
+- **Scale**: world objects are grouped into 16×16 spatial chunks. Only
+  nearby chunks are queried for rendering; distant settlements keep only
+  lightweight aggregate values such as population, stores, and defenders.
 - **Materials**: each material id maps to a height multiplier and two
   colors (north/south-facing vs east/west-facing walls), giving cheap
   directional "lighting" for free.
@@ -64,12 +74,18 @@ dependencies, easy to paste into any host or game-template system.
 
 Roughly in order of effort:
 
-- [ ] Load `MAP` from a JSON/data file instead of a hardcoded string,
-      so levels ("kingdoms"/regions) can be authored separately
+- [x] Replace the hardcoded test maze with a deterministic large realm
+- [x] Spatially bucket world objects and add aggregate settlement state
+- [x] Add a local realm map and named regions/landmarks
+- [ ] Add an in-game building cursor for walls, gates, and settlement plots
+- [ ] Add nearby follower agents plus distant aggregate warbands
+- [ ] Add navigation/pathfinding that wakes only inside active chunks
+- [ ] Load authored realm definitions from ASC113-compatible data while
+      preserving the single-file/browser pipeline
 - [ ] Variable wall heights read per-tile (not just per-material)
 - [ ] More sprite types + simple animation frames (e.g. idle bob)
-- [ ] Basic interaction: walk into a sprite to trigger a message/pickup
-- [ ] Minimap overlay (toggle key) using the same `MAP` data
+- [x] Basic landmark interaction and settlement information
+- [x] Minimap overlay (toggle key) using the same `MAP` data
 - [ ] Simple enemy/NPC movement (wander or chase within the grid)
 - [ ] Multiple maps / level transitions (kingdom regions)
 - [ ] Swap the `<pre>` renderer for `<canvas>` + `fillText` once color
@@ -82,6 +98,12 @@ Roughly in order of effort:
 Zero-config static deploy — point Vercel (or any static host) at this
 repo. `vercel.json` sets `framework: null` so Vercel serves `index.html`
 as-is with no build step.
+
+## Smoke test
+
+Run `node smoke-test.cjs` to initialize the generated realm, execute a render
+frame, draw the local map, and verify the Lokhaven interaction without adding
+any test dependencies.
 
 ## License
 

@@ -32,8 +32,14 @@ from scratch as a small, expandable foundation rather than a demo.
 
 ## Architecture (current state)
 
-- `MAP`: array of strings, one char per tile. `.` = empty, digits =
-  wall materials.
+- `MAP` / `GROUND`: 96×96 `Uint8Array`s, one byte per tile. Collision and
+  wall materials stay separate from meadow, road, settlement, and quarry
+  ground. `buildRealm()` deterministically lays out the current medieval
+  slice so it stays self-contained.
+- `LANDMARKS` / `REGIONS`: authored realm identity and lightweight
+  settlement values without adding player identity.
+- `SPRITE_BUCKETS`: world objects bucketed into 16×16 chunks;
+  `nearbySprites()` prevents the renderer from scanning the whole realm.
 - `MATERIALS`: per-material height multiplier + two colors (N/S faces
   vs E/W faces) for cheap directional lighting.
 - `castRay()`: grid DDA raycast, one call per screen column, returns
@@ -123,14 +129,16 @@ at the repo root is served as-is, no build command needed.
 
 ## Roadmap (priority order)
 
-1. Load `MAP` from a JSON/data file instead of a hardcoded string, so
-   levels can be authored separately from engine code
-2. Variable wall heights read per-tile (not just per-material)
-3. More sprite types + simple animation frames (idle bob, etc.)
-4. Basic interaction: walking into a sprite triggers a message/pickup
-5. Minimap overlay (toggle key), reusing the same `MAP` data
-6. Simple NPC movement (wander or chase within the grid)
-7. Multiple maps / level transitions
+1. Add a placement cursor and build rules for player-built walls, gates,
+   houses, and settlement plots (no account/player identity yet)
+2. Add nearby follower agents and chunk-aware navigation
+3. Represent distant parties/armies as aggregate warbands, expanding them
+   into individual agents only near the player
+4. Add settlement ownership, recruitment, supplies, sieges, and diplomacy
+5. Add variable wall heights read per tile (not just per material)
+6. Move authored realm definitions into ASC113-compatible data without
+   limiting browser UI or ecosystem systems to that format
+7. Multiple maps / region transitions
 8. Swap `<pre>` + spans for `<canvas>` + `fillText` if color count or
    frame size makes DOM spans a measured bottleneck (don't do this
    preemptively — only if profiling shows it's needed)

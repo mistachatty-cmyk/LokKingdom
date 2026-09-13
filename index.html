@@ -28,6 +28,37 @@
     font-family:monospace; color:#7fdc7f; font-size:12px;
     opacity:0.85; pointer-events:none;
   }
+  #realm-hud{
+    position:fixed; top:28px; left:8px;
+    max-width:min(420px, calc(100vw - 190px));
+    font-family:monospace; color:#d8c98d; font-size:12px;
+    line-height:1.35; text-shadow:0 1px 2px #000;
+    pointer-events:none;
+  }
+  #realm-hud .muted{ color:#82907d; }
+  #context{
+    position:fixed; left:50%; bottom:40px; transform:translateX(-50%);
+    max-width:min(560px, calc(100vw - 32px)); padding:8px 12px;
+    border:1px solid rgba(216,201,141,.35); border-radius:6px;
+    background:rgba(5,7,10,.82); color:#f0df9b; font:12px/1.35 monospace;
+    text-align:center; opacity:0; transition:opacity .18s; pointer-events:none;
+  }
+  #context.visible{ opacity:1; }
+  #map-panel{
+    position:fixed; right:12px; bottom:12px; z-index:20;
+    padding:7px; border:1px solid rgba(216,201,141,.38); border-radius:7px;
+    background:rgba(4,7,6,.88); box-shadow:0 8px 28px rgba(0,0,0,.42);
+  }
+  #map-panel[hidden]{ display:none; }
+  #minimap{ display:block; width:168px; height:168px; image-rendering:pixelated; }
+  #map-label{ margin-top:5px; color:#aab69b; font:11px monospace; text-align:center; }
+  .game-btn{
+    position:fixed; z-index:30; font:11px monospace; color:#d8e6c7;
+    background:rgba(20,30,20,.78); border:1px solid rgba(127,220,127,.4);
+    border-radius:6px; padding:7px 10px;
+  }
+  #map-btn{ right:16px; top:88px; }
+  #interact-btn{ right:16px; bottom:18px; display:none; }
   #hint{
     position:fixed; bottom:6px; left:8px;
     font-family:monospace; color:#557; font-size:11px;
@@ -37,6 +68,10 @@
   @media (pointer: coarse){
     .touch-ui{ display:block; }
     #hint{ display:none; } /* replaced by #touch-hint on touch devices */
+    #interact-btn.available{ display:block; }
+    #realm-hud{ max-width:calc(100vw - 175px); font-size:11px; }
+    #map-panel{ right:8px; bottom:58px; }
+    #minimap{ width:138px; height:138px; }
   }
   #touch-hint{
     position:fixed; bottom:6px; right:8px;
@@ -80,7 +115,7 @@
     pointer-events:none;
   }
   #debug-hud{
-    position:fixed; top:28px; left:8px;
+    position:fixed; top:67px; left:8px;
     font-family:monospace; color:#ff0; font-size:10px;
     background:rgba(0,0,0,0.6); padding:4px 6px;
     white-space:pre; pointer-events:none; z-index:9998;
@@ -98,14 +133,19 @@
 </head>
 <body>
 <div id="hud">FPS: <span id="fps">0</span> &nbsp; pos: <span id="pos">-</span></div>
+<div id="realm-hud"><span id="region-name">The Green March</span><br><span id="realm-state" class="muted">Exploring the realm</span></div>
 <div id="debug-hud" class="touch-ui"></div>
 <pre id="screen"></pre>
-<div id="hint">WASD / Arrows: move &nbsp; Q/E: turn &nbsp; Click + mouse: look</div>
+<div id="hint">WASD / Arrows: move &nbsp; Q/E: turn &nbsp; M: map &nbsp; F: interact</div>
 <div id="touch-hint" class="touch-ui">Left: move &nbsp; Right: look</div>
+<div id="context"></div>
+<div id="map-panel" hidden><canvas id="minimap" width="168" height="168"></canvas><div id="map-label">LOCAL REALM · M TO CLOSE</div></div>
 <div id="joystick-base" class="touch-ui"><div id="joystick-nub"></div></div>
 <div id="look-joystick-base" class="touch-ui"><div id="look-joystick-nub"></div></div>
 <button id="gyro-btn" class="touch-ui">Enable Gyro Look</button>
 <button id="invert-gyro-btn" class="touch-ui">Invert Gyro: On</button>
+<button id="map-btn" class="game-btn touch-ui">Realm Map</button>
+<button id="interact-btn" class="game-btn touch-ui">Interact</button>
 
 <script>
 // ---- visible error reporting: shows the real error on-screen instead of
@@ -143,61 +183,151 @@ const JOYSTICK_RADIUS = 45;
 const LOOK_TURN_SPEED = 2.2, LOOK_PITCH_SPEED = 6; // rad/sec, pitch-units/sec at full stick deflection
 const GYRO_YAW_RANGE = Math.PI / 2, GYRO_PITCH_RANGE = 8, GYRO_TILT_RANGE_DEG = 45;
 
-// ---------------- WORLD MAP ----------------
-// 0 = empty. 1/2/3 = wall materials (color + height come from MATERIALS below).
-const MAP = [
-  "1111111111111111111111111",
-  "1..........1.......1....1",
-  "1..111111..1..111111..1.1",
-  "1..1....1..1..1....1..1.1",
-  "1..1.222.1.1..1.222.1.1.1",
-  "1..1.2.2.1.1..1.2.2.1.1.1",
-  "1..1.222.1....1.222.1.1.1",
-  "1..1......1111.......1.1",
-  "1..111111111111111111.1.1",
-  "1.......................1",
-  "1.33333333.....33333333.1",
-  "1.3.....3.......3.....3.1",
-  "1.3.....3.......3.....3.1",
-  "1.33333333.....33333333.1",
-  "1.......................1",
-  "1111111111111111111111111",
+// ---------------- REALM DATA + WORLD MAP ----------------
+// The realm is deliberately larger than the rendered area. Tiles live in a
+// compact typed array and objects are bucketed into chunks, so future kingdoms
+// can grow without checking every tree, NPC, or army every frame.
+const MAPW = 96, MAPH = 96, CHUNK_SIZE = 16;
+const MAP = new Uint8Array(MAPW * MAPH);
+const GROUND = new Uint8Array(MAPW * MAPH); // 0 meadow, 1 road, 2 settlement, 3 quarry
+const LANDMARKS = [
+  { id:"lokhaven", name:"Lokhaven Hold", x:48, y:48, radius:10, kind:"hold", population:42, stores:68, defenders:12, note:"A young stone hold with room to become a capital." },
+  { id:"mossmere", name:"Mossmere", x:19, y:25, radius:7, kind:"village", population:27, stores:44, defenders:5, note:"A timber village beside the western road." },
+  { id:"emberfield", name:"Emberfield", x:76, y:70, radius:7, kind:"village", population:31, stores:51, defenders:6, note:"Farms and kilns feed the southern march." },
+  { id:"oldwatch", name:"The Old Watch", x:75, y:20, radius:5, kind:"ruin", population:0, stores:8, defenders:0, note:"A broken watchtower overlooking the eastern wilds." },
+  { id:"stonewake", name:"Stonewake Quarry", x:22, y:74, radius:6, kind:"resource", population:14, stores:39, defenders:3, note:"Good stone for future walls, keeps, and settlements." },
 ];
-const MAPW = MAP[0].length, MAPH = MAP.length;
+const REGIONS = [
+  { name:"Mosswood Reach", test:(x,y)=>x<34 && y<48 },
+  { name:"The Oldwatch Wilds", test:(x,y)=>x>=63 && y<45 },
+  { name:"Stonewake Vale", test:(x,y)=>x<38 && y>=60 },
+  { name:"Emberfield March", test:(x,y)=>x>=61 && y>=57 },
+  { name:"The Crownlands", test:()=>true },
+];
+
+function mapIndex(x, y) { return y * MAPW + x; }
+function setTile(x, y, material) {
+  if (x >= 0 && y >= 0 && x < MAPW && y < MAPH) MAP[mapIndex(x, y)] = material;
+}
+function setGround(x, y, type) {
+  if (x >= 0 && y >= 0 && x < MAPW && y < MAPH) GROUND[mapIndex(x, y)] = type;
+}
+function fillRect(x, y, w, h, material) {
+  for (let yy=y; yy<y+h; yy++) for (let xx=x; xx<x+w; xx++) setTile(xx, yy, material);
+}
+function paintGroundRect(x, y, w, h, type) {
+  for (let yy=y; yy<y+h; yy++) for (let xx=x; xx<x+w; xx++) setGround(xx, yy, type);
+}
+function wallRect(x, y, w, h, material, gates=[]) {
+  for (let xx=x; xx<x+w; xx++) { setTile(xx,y,material); setTile(xx,y+h-1,material); }
+  for (let yy=y; yy<y+h; yy++) { setTile(x,yy,material); setTile(x+w-1,yy,material); }
+  for (const [gx,gy] of gates) setTile(gx,gy,0);
+}
+function hash2(x, y, salt=0) {
+  let n = Math.imul(x + salt * 31, 374761393) + Math.imul(y - salt * 17, 668265263);
+  n = (n ^ (n >>> 13)); n = Math.imul(n, 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967295;
+}
+function carveRoad(ax, ay, bx, by, width=1) {
+  const steps = Math.max(Math.abs(bx-ax), Math.abs(by-ay));
+  for (let i=0; i<=steps; i++) {
+    const x = Math.round(ax + (bx-ax)*i/steps), y = Math.round(ay + (by-ay)*i/steps);
+    fillRect(x-width, y-width, width*2+1, width*2+1, 0);
+    paintGroundRect(x-width, y-width, width*2+1, width*2+1, 1);
+  }
+}
+
+// Deterministic world generation: boundary ridge, wilderness pockets, roads,
+// a playable hold, two villages, a quarry, and a distant ruined watch.
+function buildRealm() {
+  for (let x=0; x<MAPW; x++) { setTile(x,0,6); setTile(x,MAPH-1,6); }
+  for (let y=0; y<MAPH; y++) { setTile(0,y,6); setTile(MAPW-1,y,6); }
+  for (let y=3; y<MAPH-3; y++) for (let x=3; x<MAPW-3; x++) {
+    if (hash2(x,y,2) > .985) setTile(x,y,3);
+  }
+  carveRoad(19,25,48,48,1); carveRoad(48,48,76,70,1);
+  carveRoad(48,48,75,20,1); carveRoad(48,48,22,74,1);
+
+  fillRect(36,36,25,25,0); fillRect(12,18,15,14,0);
+  fillRect(69,63,15,14,0); fillRect(70,15,11,11,0); fillRect(16,69,13,11,0);
+  paintGroundRect(38,38,21,21,2); paintGroundRect(14,20,11,10,2);
+  paintGroundRect(71,65,11,10,2); paintGroundRect(72,17,7,7,2); paintGroundRect(18,72,9,5,3);
+  wallRect(38,38,21,21,4, [[48,58],[48,38],[38,48],[58,48]]);
+  wallRect(43,43,11,10,5, [[48,52]]);
+  wallRect(46,45,5,5,6, [[48,49]]);
+  wallRect(14,20,11,10,2, [[24,25]]);
+  wallRect(71,65,11,10,2, [[71,70]]);
+  wallRect(72,17,7,7,6, [[75,23]]);
+  fillRect(18,72,9,5,3); carveRoad(22,74,27,79,1);
+}
+buildRealm();
 
 // Per-material appearance: relative height (1 = full room height) and base color.
 const MATERIALS = {
-  1: { height: 1.0, colorNS: "#4fae4f", colorEW: "#3d8f3d" }, // outer walls
-  2: { height: 1.0, colorNS: "#3fa0b0", colorEW: "#2f7d8a" }, // inner room
-  3: { height: 0.55, colorNS: "#c98f3f", colorEW: "#a4712e" }, // low pillars
+  1: { height: 1.0, colorNS: "#4fae4f", colorEW: "#3d8f3d" },
+  2: { height: 0.72, colorNS: "#a8753d", colorEW: "#80562d" }, // timber settlement
+  3: { height: 0.38, colorNS: "#6d8652", colorEW: "#50683d" }, // hedge / rough stone
+  4: { height: 1.08, colorNS: "#9d9a88", colorEW: "#757468" }, // town wall
+  5: { height: 1.22, colorNS: "#b0a890", colorEW: "#7e7869" }, // keep
+  6: { height: 1.45, colorNS: "#6f7480", colorEW: "#50545e" }, // tower / boundary ridge
 };
 
 function tileAt(x, y) {
   const xi = Math.floor(x), yi = Math.floor(y);
   if (xi < 0 || yi < 0 || xi >= MAPW || yi >= MAPH) return 1;
-  const ch = MAP[yi][xi];
-  return ch === "." ? 0 : parseInt(ch, 10);
+  return MAP[mapIndex(xi, yi)];
+}
+function groundAt(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y);
+  if (xi < 0 || yi < 0 || xi >= MAPW || yi >= MAPH) return 0;
+  return GROUND[mapIndex(xi, yi)];
 }
 
 // ---------------- SPRITES (billboards) ----------------
 // Simple world-space objects drawn as a small glyph blob, occluded by the
 // depth buffer collected during the wall pass. Expand: add per-type shapes,
 // animation frames, or swap for real sub-images once you outgrow ASCII.
-const SPRITES = [
-  { x: 6.5, y: 9.5, type: "tree" },
-  { x: 9.5, y: 9.5, type: "tree" },
-  { x: 18.5, y: 9.5, type: "tree" },
-  { x: 21.5, y: 9.5, type: "tree" },
-  { x: 13.5, y: 1.5, type: "npc" },
-];
+const SPRITES = [];
+const SPRITE_BUCKETS = new Map();
+function addSprite(x, y, type) {
+  const sprite = { x, y, type };
+  SPRITES.push(sprite);
+  const key = `${Math.floor(x/CHUNK_SIZE)},${Math.floor(y/CHUNK_SIZE)}`;
+  if (!SPRITE_BUCKETS.has(key)) SPRITE_BUCKETS.set(key, []);
+  SPRITE_BUCKETS.get(key).push(sprite);
+}
+function seedRealmObjects() {
+  for (let y=3; y<MAPH-3; y++) for (let x=3; x<MAPW-3; x++) {
+    const nearRoad = Math.abs(x-y) < 4 || Math.abs((x+y)-96) < 4;
+    if (!nearRoad && tileAt(x+.5,y+.5) === 0 && hash2(x,y,11) > .91) addSprite(x+.5,y+.5,"tree");
+  }
+  addSprite(48.5, 54.5, "banner"); addSprite(45.5, 54.5, "npc");
+  addSprite(18.5, 25.5, "npc"); addSprite(76.5, 69.5, "npc");
+  addSprite(75.5, 20.5, "ruin"); addSprite(22.5, 71.5, "quarry");
+}
 const SPRITE_GLYPHS = {
-  tree: { rows: ["^", "*", "|"], color: "#3fbf5f" },
-  npc:  { rows: ["o", "|"],      color: "#e0c060" },
+  tree:   { rows: ["^", "*", "|"], color: "#3f9f4f" },
+  npc:    { rows: ["o", "|"],      color: "#e0c060" },
+  banner: { rows: [">", "|", "|"], color: "#d5a63c" },
+  ruin:   { rows: ["#", "[", "|"], color: "#8d8c82" },
+  quarry: { rows: ["/", "%"],      color: "#aaa18b" },
 };
+seedRealmObjects();
+
+function nearbySprites(radius=24) {
+  const result = [];
+  const minCX = Math.floor((player.x-radius)/CHUNK_SIZE), maxCX = Math.floor((player.x+radius)/CHUNK_SIZE);
+  const minCY = Math.floor((player.y-radius)/CHUNK_SIZE), maxCY = Math.floor((player.y+radius)/CHUNK_SIZE);
+  for (let cy=minCY; cy<=maxCY; cy++) for (let cx=minCX; cx<=maxCX; cx++) {
+    const bucket = SPRITE_BUCKETS.get(`${cx},${cy}`);
+    if (bucket) result.push(...bucket);
+  }
+  return result;
+}
 
 // ---------------- CHARACTER PALETTES ----------------
 const WALL_SHADES = ["#", "%", "*", "+", "=", "-", ":", "."]; // near -> far
 const FLOOR_CHARS = [",", ".", "`", " "];
+const GROUND_COLORS = ["#50613b", "#806d4e", "#6f624d", "#777269"];
 const SKY_CHAR = " ";
 
 function shadeIndex(dist, maxDist, levels) {
@@ -214,14 +344,60 @@ function darken(hex, factor) {
 }
 
 // ---------------- PLAYER ----------------
-const player = { x: 2.5, y: 1.5, angle: 0, pitch: 0 };
+const player = { x: 48.5, y: 56.5, angle: -Math.PI/2, pitch: 0 };
+
+// ---------------- LIGHTWEIGHT REALM SIMULATION ----------------
+// Only aggregate settlement values update away from the player. Individual
+// followers and armies can later wake into active agents inside nearby chunks.
+const realmClock = { day:1, minutes:8*60 };
+let realmAccumulator = 0;
+function updateRealm(dt) {
+  realmClock.minutes += dt * 1.5;
+  if (realmClock.minutes >= 1440) { realmClock.minutes -= 1440; realmClock.day++; }
+  realmAccumulator += dt;
+  if (realmAccumulator < 5) return;
+  realmAccumulator = 0;
+  for (const site of LANDMARKS) {
+    if (site.population <= 0) continue;
+    site.stores = Math.max(0, Math.min(99, site.stores + (site.kind === "village" ? .08 : .03)));
+  }
+}
 
 // ---------------- INPUT ----------------
 const keys = {};
-window.addEventListener("keydown", e => { keys[e.key.toLowerCase()] = true; });
+window.addEventListener("keydown", e => {
+  keys[e.key.toLowerCase()] = true;
+  if (!e.repeat && e.key.toLowerCase() === "m") toggleMap();
+  if (!e.repeat && e.key.toLowerCase() === "f") interact();
+});
 window.addEventListener("keyup",   e => { keys[e.key.toLowerCase()] = false; });
 
 const screenEl = document.getElementById("screen");
+const mapPanel = document.getElementById("map-panel");
+const mapBtn = document.getElementById("map-btn");
+const interactBtn = document.getElementById("interact-btn");
+const contextEl = document.getElementById("context");
+let contextTimer = 0;
+function toggleMap() { mapPanel.hidden = !mapPanel.hidden; if (!mapPanel.hidden) drawMinimap(); }
+mapBtn.addEventListener("click", e => { e.stopPropagation(); toggleMap(); });
+interactBtn.addEventListener("click", e => { e.stopPropagation(); interact(); });
+
+function nearestLandmark() {
+  let nearest = null, best = Infinity;
+  for (const site of LANDMARKS) {
+    const d = Math.hypot(site.x-player.x, site.y-player.y);
+    if (d < best) { best=d; nearest=site; }
+  }
+  return { site:nearest, distance:best };
+}
+function showContext(message, seconds=4) {
+  contextEl.textContent = message; contextEl.classList.add("visible"); contextTimer = seconds;
+}
+function interact() {
+  const { site, distance } = nearestLandmark();
+  if (!site || distance > site.radius + 2) { showContext("Nothing nearby to interact with.", 2); return; }
+  showContext(`${site.name} — ${site.note} Population ${site.population}; stores ${Math.round(site.stores)}; defenders ${site.defenders}.`);
+}
 const isTouchDevice = ("ontouchstart" in window) || navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches;
 if (!isTouchDevice) {
   document.body.addEventListener("click", () => {
@@ -277,7 +453,7 @@ function onTouchStart(e) {
   releaseStaleTouches(e);
   debugTouchStarts++;
   for (const t of e.changedTouches) {
-    if (t.target.closest("#gyro-btn, #invert-gyro-btn")) continue;
+    if (t.target.closest("#gyro-btn, #invert-gyro-btn, #map-btn, #interact-btn")) continue;
     if (t.clientX < window.innerWidth / 2) {
       if (joystickTouchId !== null) continue;
       joystickTouchId = t.identifier;
@@ -419,6 +595,11 @@ function update(dt) {
     moveY = moveY * scale;
     tryMove(player.x + moveX, player.y + moveY);
   }
+  updateRealm(dt);
+  if (contextTimer > 0) {
+    contextTimer -= dt;
+    if (contextTimer <= 0) contextEl.classList.remove("visible");
+  }
 }
 
 // ---------------- RAYCAST (DDA) ----------------
@@ -436,7 +617,7 @@ function castRay(rayAngle) {
   else          { stepY = 1;  sideDistY = (mapY + 1 - player.y) * deltaDistY; }
 
   let hit = 0, side = 0, material = 0, guard = 0;
-  while (!hit && guard++ < 64) {
+  while (!hit && guard++ < 128) {
     if (sideDistX < sideDistY) { sideDistX += deltaDistX; mapX += stepX; side = 0; }
     else                        { sideDistY += deltaDistY; mapY += stepY; side = 1; }
     material = tileAt(mapX, mapY);
@@ -450,8 +631,53 @@ function castRay(rayAngle) {
   return { dist: Math.max(0.0001, Math.abs(perpDist)), side, material };
 }
 
+// ---------------- LOCAL REALM MAP ----------------
+// This intentionally draws only the player's surrounding chunks. It gives the
+// feeling of a large world without rendering or simulating the full realm UI.
+const minimapCanvas = document.getElementById("minimap");
+const minimapCtx = minimapCanvas.getContext("2d");
+const MAP_VIEW_RADIUS = 18;
+let mapDrawAccumulator = 0;
+function drawMinimap() {
+  const size = minimapCanvas.width, cells = MAP_VIEW_RADIUS*2+1, cell = size/cells;
+  const ox = Math.floor(player.x)-MAP_VIEW_RADIUS, oy = Math.floor(player.y)-MAP_VIEW_RADIUS;
+  minimapCtx.fillStyle = "#10170f"; minimapCtx.fillRect(0,0,size,size);
+  for (let y=0; y<cells; y++) for (let x=0; x<cells; x++) {
+    const wx=ox+x, wy=oy+y, material=tileAt(wx+.5,wy+.5), ground=groundAt(wx+.5,wy+.5);
+    minimapCtx.fillStyle = material === 0 ? (ground === 1 ? "#695c45" : ground === 2 ? "#4f483a" : ground === 3 ? "#69665f" : hash2(wx,wy,4)>.7 ? "#20331e" : "#1a2b19")
+      : material === 2 ? "#865d35" : material === 3 ? "#526844"
+      : material === 4 ? "#888675" : material === 5 ? "#aaa187" : "#5c6068";
+    minimapCtx.fillRect(x*cell,y*cell,Math.ceil(cell),Math.ceil(cell));
+  }
+  for (const site of LANDMARKS) {
+    const sx=(site.x-ox+.5)*cell, sy=(site.y-oy+.5)*cell;
+    if (sx<0||sy<0||sx>size||sy>size) continue;
+    minimapCtx.fillStyle = site.kind === "ruin" ? "#a4a39b" : site.kind === "resource" ? "#d0b47a" : "#e1c85e";
+    minimapCtx.fillRect(sx-2,sy-2,5,5);
+  }
+  const px=(player.x-ox)*cell, py=(player.y-oy)*cell;
+  minimapCtx.save(); minimapCtx.translate(px,py); minimapCtx.rotate(player.angle);
+  minimapCtx.fillStyle="#fff4b0"; minimapCtx.beginPath();
+  minimapCtx.moveTo(7,0); minimapCtx.lineTo(-5,-4); minimapCtx.lineTo(-3,0); minimapCtx.lineTo(-5,4); minimapCtx.closePath(); minimapCtx.fill();
+  minimapCtx.restore();
+}
+
+function updateRealmHud(dt) {
+  const region = REGIONS.find(entry => entry.test(player.x,player.y));
+  const { site, distance } = nearestLandmark();
+  const insideSite = site && distance <= site.radius;
+  const hours = Math.floor(realmClock.minutes/60), minutes = Math.floor(realmClock.minutes%60);
+  document.getElementById("region-name").textContent = insideSite ? site.name : region.name;
+  document.getElementById("realm-state").textContent =
+    `Day ${realmClock.day} · ${String(hours).padStart(2,"0")}:${String(minutes).padStart(2,"0")}` +
+    (insideSite && site.population ? ` · ${site.population} people · ${Math.round(site.stores)} stores` : " · Open realm");
+  interactBtn.classList.toggle("available", Boolean(site && distance <= site.radius+2));
+  mapDrawAccumulator += dt;
+  if (!mapPanel.hidden && mapDrawAccumulator >= .15) { mapDrawAccumulator=0; drawMinimap(); }
+}
+
 // ---------------- RENDER ----------------
-function render() {
+function render(dt) {
   const chGrid = new Array(ROWS);
   const colGrid = new Array(ROWS);
   for (let r = 0; r < ROWS; r++) {
@@ -488,14 +714,16 @@ function render() {
       } else {
         const floorDepth = row - horizon;
         const fi = Math.min(FLOOR_CHARS.length - 1, Math.floor(floorDepth / 5));
+        const groundDist = Math.min(28, ROWS / Math.max(1, floorDepth * 1.7));
+        const groundType = groundAt(player.x + Math.cos(rayAngle)*groundDist, player.y + Math.sin(rayAngle)*groundDist);
         chGrid[row][col] = FLOOR_CHARS[FLOOR_CHARS.length - 1 - fi];
-        colGrid[row][col] = darken("#6f5a3f", 0.15 + fi * 0.15);
+        colGrid[row][col] = darken(GROUND_COLORS[groundType] || GROUND_COLORS[0], 0.10 + fi * 0.13);
       }
     }
   }
 
   // ---- sprite pass (billboards, depth-tested against the wall pass) ----
-  for (const spr of SPRITES) {
+  for (const spr of nearbySprites()) {
     const dx = spr.x - player.x, dy = spr.y - player.y;
     const dist = Math.hypot(dx, dy);
     if (dist < 0.15) continue;
@@ -553,7 +781,9 @@ function render() {
     `starts:${debugTouchStarts} moves:${debugTouchMoves} ends:${debugTouchEnds}\n` +
     `joyId:${joystickTouchId} joyDX:${joyDX.toFixed(2)} joyDY:${joyDY.toFixed(2)}\n` +
     `lookId:${lookTouchId} lookDX:${lookJoyDX.toFixed(2)} lookDY:${lookJoyDY.toFixed(2)}\n` +
-    `gyro:${gyroEnabled} pitch:${player.pitch.toFixed(1)}`;
+    `gyro:${gyroEnabled} pitch:${player.pitch.toFixed(1)}\n` +
+    `chunk:${Math.floor(player.x/CHUNK_SIZE)},${Math.floor(player.y/CHUNK_SIZE)} nearSprites:${nearbySprites().length}`;
+  updateRealmHud(dt);
 }
 
 // ---------------- LOOP ----------------
@@ -564,7 +794,7 @@ function loop(now) {
   lastTime = now;
 
   update(dt);
-  render();
+  render(dt);
 
   fpsFrames++; fpsTimer += dt;
   if (fpsTimer >= 0.5) {
