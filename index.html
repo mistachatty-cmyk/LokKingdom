@@ -94,7 +94,7 @@ const FOV = Math.PI / 3;
 const MOVE_SPEED = 3.2, TURN_SPEED = 2.4, MOUSE_SENS = 0.0025;
 const JOYSTICK_RADIUS = 45;
 const TOUCH_LOOK_SENS_X = 0.006, TOUCH_LOOK_SENS_Y = 0.03;
-const GYRO_TURN_SPEED = 2.4, GYRO_PITCH_RANGE = 8, GYRO_TILT_RANGE_DEG = 45;
+const GYRO_YAW_RANGE = Math.PI / 2, GYRO_PITCH_RANGE = 8, GYRO_TILT_RANGE_DEG = 45;
 
 // ---------------- WORLD MAP ----------------
 // 0 = empty. 1/2/3 = wall materials (color + height come from MATERIALS below).
@@ -252,7 +252,7 @@ const gyroBtn = document.getElementById("gyro-btn");
 const invertGyroBtn = document.getElementById("invert-gyro-btn");
 let gyroEnabled = false, gyroYaw = 0, gyroPitch = 0;
 let gyroInverted = true; // most players expect tilt-back-to-look-down, like a flight stick
-let gyroNeutralBeta = null, gyroNeutralGamma = null;
+let gyroNeutralBeta = null, gyroNeutralGamma = null, gyroBaseAngle = 0;
 
 invertGyroBtn.addEventListener("click", () => {
   gyroInverted = !gyroInverted;
@@ -261,7 +261,7 @@ invertGyroBtn.addEventListener("click", () => {
 
 function onDeviceOrientation(e) {
   if (e.beta === null || e.gamma === null) return;
-  if (gyroNeutralBeta === null) { gyroNeutralBeta = e.beta; gyroNeutralGamma = e.gamma; }
+  if (gyroNeutralBeta === null) { gyroNeutralBeta = e.beta; gyroNeutralGamma = e.gamma; gyroBaseAngle = player.angle; }
   const dGamma = Math.max(-GYRO_TILT_RANGE_DEG, Math.min(GYRO_TILT_RANGE_DEG, e.gamma - gyroNeutralGamma));
   const dBeta = Math.max(-GYRO_TILT_RANGE_DEG, Math.min(GYRO_TILT_RANGE_DEG, e.beta - gyroNeutralBeta));
   gyroYaw = -dGamma / GYRO_TILT_RANGE_DEG; // tilting right should turn right, not left
@@ -304,7 +304,10 @@ function update(dt) {
   if (joystickTouchId !== null) { moveX += fwdX * -joyDY + rightX * joyDX; moveY += fwdY * -joyDY + rightY * joyDX; }
 
   if (gyroEnabled) {
-    player.angle += gyroYaw * GYRO_TURN_SPEED * dt;
+    // proportional to current tilt (like pitch below), not accumulated over time —
+    // an accumulating rate meant any incidental tilt (e.g. reaching for the
+    // joystick with a thumb) silently spun the player away over a few seconds
+    player.angle = gyroBaseAngle + gyroYaw * GYRO_YAW_RANGE;
     player.pitch = (gyroInverted ? -1 : 1) * gyroPitch * GYRO_PITCH_RANGE;
   }
 
