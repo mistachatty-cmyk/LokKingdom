@@ -5,7 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>LokKingdom</title>
 <style>
-  html,body{margin:0;height:100%;background:#05070a;overflow:hidden;touch-action:none;}
+  html,body{
+    margin:0;height:100%;background:#05070a;overflow:hidden;touch-action:none;
+    -webkit-touch-callout:none; -webkit-user-select:none; user-select:none;
+    -webkit-tap-highlight-color:transparent;
+  }
   #screen{
     font-family: "Courier New", monospace;
     font-weight:bold;
@@ -78,6 +82,23 @@
 <button id="invert-gyro-btn" class="touch-ui">Invert Gyro: On</button>
 
 <script>
+// ---- visible error reporting: shows the real error on-screen instead of
+// silently freezing, since a phone can't easily show a devtools console ----
+(function () {
+  let el = null;
+  function show(msg) {
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "fatal-error";
+      el.style.cssText = "position:fixed;top:0;left:0;right:0;background:#a00;color:#fff;font:12px monospace;padding:8px;z-index:9999;white-space:pre-wrap;max-height:50vh;overflow:auto;";
+      document.body.appendChild(el);
+    }
+    el.textContent += (el.textContent ? "\n" : "") + msg;
+  }
+  window.addEventListener("error", e => show("ERROR: " + e.message + " (" + e.filename + ":" + e.lineno + ":" + e.colno + ")"));
+  window.addEventListener("unhandledrejection", e => show("PROMISE REJECTION: " + (e.reason && e.reason.message ? e.reason.message : e.reason)));
+})();
+
 /* =====================================================================
    ASCII 3D ENGINE v2 — single file, zero dependencies
    Grid-based world -> per-column DDA raycast -> ASCII wall/floor/sky
@@ -175,7 +196,7 @@ window.addEventListener("keydown", e => { keys[e.key.toLowerCase()] = true; });
 window.addEventListener("keyup",   e => { keys[e.key.toLowerCase()] = false; });
 
 const screenEl = document.getElementById("screen");
-const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
+const isTouchDevice = ("ontouchstart" in window) || navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches;
 if (!isTouchDevice) {
   document.body.addEventListener("click", () => {
     screenEl.requestPointerLock && screenEl.requestPointerLock();
