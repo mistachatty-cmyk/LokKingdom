@@ -56,10 +56,13 @@ Desktop: `W A S D` / arrow keys to move, `Q`/`E` to turn, click the
 canvas then move the mouse to look (pointer lock).
 
 Touch (shown only on `pointer: coarse` devices via CSS media query):
-a fixed virtual joystick bottom-left drives forward/back/strafe the
-same way WASD does; dragging a finger anywhere on the right half of
-the screen turns/looks the same way a mouse does. Both are tracked by
-touch `identifier` so they work simultaneously as two fingers.
+touching down anywhere on the left half of the screen spawns a virtual
+joystick right at that point (`#joystick-base` is positioned via
+inline `left`/`top` set in `onTouchStart`, not fixed in CSS) and drives
+forward/back/strafe the same way WASD does; dragging a finger anywhere
+on the right half of the screen turns/looks the same way a mouse does.
+Both are tracked by touch `identifier` so they work simultaneously as
+two fingers.
 
 Gyro: a button (touch devices only) requests `DeviceOrientationEvent`
 permission (required gesture-gated on iOS Safari) and then steers look
@@ -67,6 +70,10 @@ by tilting the device — tilt is measured relative to whatever angle
 the device was held at when gyro was enabled (calibrated on enable,
 recalibrated by tapping the button again), not absolute compass
 heading, since raw compass data is unreliable across devices/browsers.
+A second button, "Invert Gyro", flips the tilt-to-pitch sign
+(`gyroInverted`, defaults to `true`) — most gyro-look implementations
+default to inverted (tilt back = look down), so that's the shipped
+default here too; it only affects gyro pitch, not mouse/touch look.
 
 ## How to run / test
 

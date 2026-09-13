@@ -40,12 +40,15 @@
     opacity:0.75; pointer-events:none; text-align:right;
   }
   #joystick-base{
-    position:fixed; left:26px; bottom:26px;
+    position:fixed; left:0; top:0;
     width:110px; height:110px; border-radius:50%;
     background:rgba(127,220,127,0.08);
     border:2px solid rgba(127,220,127,0.35);
     touch-action:none;
+    transform:translate(-50%,-50%);
+    opacity:0;
   }
+  #joystick-base.active{ opacity:1; }
   #joystick-nub{
     position:absolute; left:50%; top:50%;
     width:46px; height:46px; margin:-23px 0 0 -23px;
@@ -54,13 +57,15 @@
     border:2px solid rgba(127,220,127,0.6);
     pointer-events:none;
   }
-  #gyro-btn{
-    position:fixed; right:16px; top:16px;
+  #gyro-btn, #invert-gyro-btn{
+    position:fixed; right:16px;
     font-family:monospace; font-size:11px; color:#bfe6bf;
     background:rgba(20,30,20,0.7);
     border:1px solid rgba(127,220,127,0.4);
     border-radius:6px; padding:6px 10px;
   }
+  #gyro-btn{ top:16px; }
+  #invert-gyro-btn{ top:52px; }
 </style>
 </head>
 <body>
@@ -70,6 +75,7 @@
 <div id="touch-hint" class="touch-ui">Left: move &nbsp; Right: drag to look</div>
 <div id="joystick-base" class="touch-ui"><div id="joystick-nub"></div></div>
 <button id="gyro-btn" class="touch-ui">Enable Gyro Look</button>
+<button id="invert-gyro-btn" class="touch-ui">Invert Gyro: On</button>
 
 <script>
 /* =====================================================================
@@ -184,15 +190,20 @@ document.addEventListener("mousemove", e => {
 const joystickBase = document.getElementById("joystick-base");
 const joystickNub = document.getElementById("joystick-nub");
 let joystickTouchId = null, joyDX = 0, joyDY = 0;
+let joystickCenterX = 0, joystickCenterY = 0;
 let lookTouchId = null, lookLastX = 0, lookLastY = 0;
 
 function onTouchStart(e) {
   for (const t of e.changedTouches) {
-    if (t.target.closest("#gyro-btn")) continue;
+    if (t.target.closest("#gyro-btn, #invert-gyro-btn")) continue;
     if (t.clientX < window.innerWidth / 2) {
       if (joystickTouchId !== null) continue;
       joystickTouchId = t.identifier;
       joyDX = 0; joyDY = 0;
+      joystickCenterX = t.clientX; joystickCenterY = t.clientY;
+      joystickBase.style.left = t.clientX + "px";
+      joystickBase.style.top = t.clientY + "px";
+      joystickBase.classList.add("active");
     } else {
       if (lookTouchId !== null) continue;
       lookTouchId = t.identifier;
@@ -204,8 +215,8 @@ function onTouchMove(e) {
   for (const t of e.changedTouches) {
     if (t.identifier === joystickTouchId) {
       e.preventDefault();
-      const dx = Math.max(-JOYSTICK_RADIUS, Math.min(JOYSTICK_RADIUS, t.clientX - (joystickBase.offsetLeft + joystickBase.offsetWidth / 2)));
-      const dy = Math.max(-JOYSTICK_RADIUS, Math.min(JOYSTICK_RADIUS, t.clientY - (joystickBase.offsetTop + joystickBase.offsetHeight / 2)));
+      const dx = Math.max(-JOYSTICK_RADIUS, Math.min(JOYSTICK_RADIUS, t.clientX - joystickCenterX));
+      const dy = Math.max(-JOYSTICK_RADIUS, Math.min(JOYSTICK_RADIUS, t.clientY - joystickCenterY));
       joyDX = dx / JOYSTICK_RADIUS; joyDY = dy / JOYSTICK_RADIUS;
       joystickNub.style.transform = `translate(${dx}px, ${dy}px)`;
     } else if (t.identifier === lookTouchId) {
@@ -222,6 +233,7 @@ function onTouchEnd(e) {
     if (t.identifier === joystickTouchId) {
       joystickTouchId = null; joyDX = 0; joyDY = 0;
       joystickNub.style.transform = "translate(0, 0)";
+      joystickBase.classList.remove("active");
     } else if (t.identifier === lookTouchId) {
       lookTouchId = null;
     }
@@ -234,8 +246,15 @@ document.addEventListener("touchcancel", onTouchEnd);
 
 // ---- gyro: tilt-to-look, calibrated to the orientation held when enabled ----
 const gyroBtn = document.getElementById("gyro-btn");
+const invertGyroBtn = document.getElementById("invert-gyro-btn");
 let gyroEnabled = false, gyroYaw = 0, gyroPitch = 0;
+let gyroInverted = true; // most players expect tilt-back-to-look-down, like a flight stick
 let gyroNeutralBeta = null, gyroNeutralGamma = null;
+
+invertGyroBtn.addEventListener("click", () => {
+  gyroInverted = !gyroInverted;
+  invertGyroBtn.textContent = "Invert Gyro: " + (gyroInverted ? "On" : "Off");
+});
 
 function onDeviceOrientation(e) {
   if (e.beta === null || e.gamma === null) return;
@@ -283,7 +302,7 @@ function update(dt) {
 
   if (gyroEnabled) {
     player.angle += gyroYaw * GYRO_TURN_SPEED * dt;
-    player.pitch = gyroPitch * GYRO_PITCH_RANGE;
+    player.pitch = (gyroInverted ? -1 : 1) * gyroPitch * GYRO_PITCH_RANGE;
   }
 
   const len = Math.hypot(moveX, moveY);
