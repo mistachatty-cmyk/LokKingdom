@@ -8,7 +8,9 @@ static host.
 
 The current realm is a deterministic 96×96 medieval region containing
 Lokhaven Hold, two villages, an old watch, a quarry, wilderness, and a
-road network. It is a compact first slice of a much larger goal: player-built
+road network. The original test maze is preserved inside the realm as **The
+First Maze**, an ancient special location with a new eastern entrance. It is a
+compact first slice of a much larger goal: player-built
 settlements, castles and kingdoms, recruitable followers, armies, and
 Bannerlord-inspired wars that remain practical in a mobile browser.
 
@@ -51,6 +53,11 @@ mouse look to behave consistently across browsers).
 - **Scale**: world objects are grouped into 16×16 spatial chunks. Only
   nearby chunks are queried for rendering; distant settlements keep only
   lightweight aggregate values such as population, stores, and defenders.
+- **Seeds**: every device receives a remembered world seed. The seed
+  deterministically changes chunk biomes, rough terrain, tree density, danger,
+  and optional frontier locations while preserving important authored places.
+  Open `?seed=your-seed` to recreate or share a specific realm, or use **New
+  world** inside the realm map.
 - **Materials**: each material id maps to a height multiplier and two
   colors (north/south-facing vs east/west-facing walls), giving cheap
   directional "lighting" for free.
@@ -77,6 +84,8 @@ Roughly in order of effort:
 - [x] Replace the hardcoded test maze with a deterministic large realm
 - [x] Spatially bucket world objects and add aggregate settlement state
 - [x] Add a local realm map and named regions/landmarks
+- [x] Preserve the original maze as a discoverable special location
+- [x] Generate deterministic biomes and frontier sites from shareable seeds
 - [ ] Add an in-game building cursor for walls, gates, and settlement plots
 - [ ] Add nearby follower agents plus distant aggregate warbands
 - [ ] Add navigation/pathfinding that wakes only inside active chunks

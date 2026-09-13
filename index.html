@@ -52,6 +52,12 @@
   #map-panel[hidden]{ display:none; }
   #minimap{ display:block; width:168px; height:168px; image-rendering:pixelated; }
   #map-label{ margin-top:5px; color:#aab69b; font:11px monospace; text-align:center; }
+  #seed-tools{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:7px; }
+  #world-seed{ max-width:94px; overflow:hidden; color:#7f9278; font:10px monospace; text-overflow:ellipsis; white-space:nowrap; }
+  #new-world-btn{
+    color:#d8e6c7; background:#1b271a; border:1px solid rgba(127,220,127,.35);
+    border-radius:4px; padding:5px 7px; font:10px monospace;
+  }
   .game-btn{
     position:fixed; z-index:30; font:11px monospace; color:#d8e6c7;
     background:rgba(20,30,20,.78); border:1px solid rgba(127,220,127,.4);
@@ -139,7 +145,11 @@
 <div id="hint">WASD / Arrows: move &nbsp; Q/E: turn &nbsp; M: map &nbsp; F: interact</div>
 <div id="touch-hint" class="touch-ui">Left: move &nbsp; Right: look</div>
 <div id="context"></div>
-<div id="map-panel" hidden><canvas id="minimap" width="168" height="168"></canvas><div id="map-label">LOCAL REALM · M TO CLOSE</div></div>
+<div id="map-panel" hidden>
+  <canvas id="minimap" width="168" height="168"></canvas>
+  <div id="map-label">LOCAL REALM · M TO CLOSE</div>
+  <div id="seed-tools"><span id="world-seed">SEED</span><button id="new-world-btn">New world</button></div>
+</div>
 <div id="joystick-base" class="touch-ui"><div id="joystick-nub"></div></div>
 <div id="look-joystick-base" class="touch-ui"><div id="look-joystick-nub"></div></div>
 <button id="gyro-btn" class="touch-ui">Enable Gyro Look</button>
@@ -189,9 +199,52 @@ const GYRO_YAW_RANGE = Math.PI / 2, GYRO_PITCH_RANGE = 8, GYRO_TILT_RANGE_DEG = 
 // can grow without checking every tree, NPC, or army every frame.
 const MAPW = 96, MAPH = 96, CHUNK_SIZE = 16;
 const MAP = new Uint8Array(MAPW * MAPH);
-const GROUND = new Uint8Array(MAPW * MAPH); // 0 meadow, 1 road, 2 settlement, 3 quarry
+const GROUND = new Uint8Array(MAPW * MAPH); // 0 meadow, 1 road, 2 settlement, 3 quarry, 4 highland, 5 marsh
+const CHUNK_META = new Map();
+function randomSeed() {
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    const values = new Uint32Array(2); crypto.getRandomValues(values);
+    return `${values[0].toString(36)}-${values[1].toString(36)}`;
+  }
+  return `realm-${Date.now().toString(36)}`;
+}
+function readWorldSeed() {
+  const requested = typeof location !== "undefined" ? new URLSearchParams(location.search).get("seed") : null;
+  let stored = null;
+  try { stored = localStorage.getItem("lokrealm-world-seed"); } catch (_) {}
+  const seed = (requested || stored || randomSeed()).slice(0,48);
+  try { localStorage.setItem("lokrealm-world-seed", seed); } catch (_) {}
+  return seed;
+}
+function hashText(text) {
+  let h = 2166136261;
+  for (let i=0; i<text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h,16777619); }
+  return h >>> 0;
+}
+const WORLD_SEED = readWorldSeed();
+const WORLD_SEED_HASH = hashText(WORLD_SEED);
+const LEGACY_MAZE_ORIGIN = { x:7, y:44 };
+const LEGACY_MAZE = [
+  "1111111111111111111111111",
+  "1..........1.......1....1",
+  "1..111111..1..111111..1.1",
+  "1..1....1..1..1....1..1.1",
+  "1..1.222.1.1..1.222.1.1.1",
+  "1..1.2.2.1.1..1.2.2.1.1.1",
+  "1..1.222.1....1.222.1.1.1",
+  "1..1......1111.......1..1",
+  "1..111111111111111111.1.1",
+  "1.......................1",
+  "1.33333333.....33333333.1",
+  "1.3.....3.......3.....3.1",
+  "1.3.....3.......3.....3.1",
+  "1.33333333.....33333333.1",
+  "1.......................1",
+  "1111111111111111111111111",
+];
 const LANDMARKS = [
   { id:"lokhaven", name:"Lokhaven Hold", x:48, y:48, radius:10, kind:"hold", population:42, stores:68, defenders:12, note:"A young stone hold with room to become a capital." },
+  { id:"first-maze", name:"The First Maze", x:19.5, y:52, radius:14, kind:"maze", population:0, stores:0, defenders:0, note:"The original LokKingdom maze, preserved as an ancient trial beneath the western crownlands." },
   { id:"mossmere", name:"Mossmere", x:19, y:25, radius:7, kind:"village", population:27, stores:44, defenders:5, note:"A timber village beside the western road." },
   { id:"emberfield", name:"Emberfield", x:76, y:70, radius:7, kind:"village", population:31, stores:51, defenders:6, note:"Farms and kilns feed the southern march." },
   { id:"oldwatch", name:"The Old Watch", x:75, y:20, radius:5, kind:"ruin", population:0, stores:8, defenders:0, note:"A broken watchtower overlooking the eastern wilds." },
@@ -224,7 +277,7 @@ function wallRect(x, y, w, h, material, gates=[]) {
   for (const [gx,gy] of gates) setTile(gx,gy,0);
 }
 function hash2(x, y, salt=0) {
-  let n = Math.imul(x + salt * 31, 374761393) + Math.imul(y - salt * 17, 668265263);
+  let n = Math.imul(x + salt * 31, 374761393) + Math.imul(y - salt * 17, 668265263) + WORLD_SEED_HASH;
   n = (n ^ (n >>> 13)); n = Math.imul(n, 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967295;
 }
 function carveRoad(ax, ay, bx, by, width=1) {
@@ -236,16 +289,54 @@ function carveRoad(ax, ay, bx, by, width=1) {
   }
 }
 
+function generateChunk(cx, cy) {
+  const key = `${cx},${cy}`;
+  if (CHUNK_META.has(key)) return;
+  const climate = hash2(cx,cy,101);
+  const biome = climate < .24 ? "marsh" : climate > .77 ? "highland" : "meadow";
+  CHUNK_META.set(key, { cx, cy, biome, danger:Math.floor(hash2(cx,cy,202)*4) });
+  const startX=cx*CHUNK_SIZE, startY=cy*CHUNK_SIZE;
+  for (let y=startY; y<Math.min(MAPH,startY+CHUNK_SIZE); y++) {
+    for (let x=startX; x<Math.min(MAPW,startX+CHUNK_SIZE); x++) {
+      setGround(x,y,biome === "marsh" ? 5 : biome === "highland" ? 4 : 0);
+      const roughness = biome === "highland" ? .968 : biome === "marsh" ? .989 : .982;
+      if (x>2 && y>2 && x<MAPW-3 && y<MAPH-3 && hash2(x,y,2)>roughness) setTile(x,y,3);
+    }
+  }
+}
+
+function addSeededFrontierSites() {
+  const nouns = ["Fox","Moon","Thorn","Ash","Rook","Wyrm"];
+  const places = ["Camp","Grove","Shrine","Crossing"];
+  for (let cy=0; cy<MAPH/CHUNK_SIZE; cy++) for (let cx=0; cx<MAPW/CHUNK_SIZE; cx++) {
+    if (hash2(cx,cy,303) < .83) continue;
+    const x=cx*CHUNK_SIZE+4+Math.floor(hash2(cx,cy,304)*8);
+    const y=cy*CHUNK_SIZE+4+Math.floor(hash2(cx,cy,305)*8);
+    if (LANDMARKS.some(site=>Math.hypot(site.x-x,site.y-y)<15)) continue;
+    const name=`${nouns[Math.floor(hash2(cx,cy,306)*nouns.length)]} ${places[Math.floor(hash2(cx,cy,307)*places.length)]}`;
+    fillRect(x-1,y-1,3,3,0); paintGroundRect(x-1,y-1,3,3,2);
+    LANDMARKS.push({ id:`seed-${cx}-${cy}`, name, x, y, radius:4, kind:"frontier", population:0, stores:Math.floor(hash2(cx,cy,308)*18), defenders:0, note:"A seed-born frontier site unique to this realm." });
+  }
+}
+
+function placeLegacyMaze() {
+  const {x:ox,y:oy}=LEGACY_MAZE_ORIGIN;
+  fillRect(ox-1,oy-1,27,18,0); paintGroundRect(ox-1,oy-1,27,18,2);
+  for (let y=0; y<LEGACY_MAZE.length; y++) for (let x=0; x<LEGACY_MAZE[y].length; x++) {
+    const ch=LEGACY_MAZE[y][x]; setTile(ox+x,oy+y,ch === "." ? 0 : Number(ch));
+  }
+  setTile(ox+24,oy+9,0); // an eastern entry added without altering the interior maze
+}
+
 // Deterministic world generation: boundary ridge, wilderness pockets, roads,
 // a playable hold, two villages, a quarry, and a distant ruined watch.
 function buildRealm() {
+  for (let cy=0; cy<MAPH/CHUNK_SIZE; cy++) for (let cx=0; cx<MAPW/CHUNK_SIZE; cx++) generateChunk(cx,cy);
   for (let x=0; x<MAPW; x++) { setTile(x,0,6); setTile(x,MAPH-1,6); }
   for (let y=0; y<MAPH; y++) { setTile(0,y,6); setTile(MAPW-1,y,6); }
-  for (let y=3; y<MAPH-3; y++) for (let x=3; x<MAPW-3; x++) {
-    if (hash2(x,y,2) > .985) setTile(x,y,3);
-  }
   carveRoad(19,25,48,48,1); carveRoad(48,48,76,70,1);
   carveRoad(48,48,75,20,1); carveRoad(48,48,22,74,1);
+  carveRoad(38,48,31,53,1);
 
   fillRect(36,36,25,25,0); fillRect(12,18,15,14,0);
   fillRect(69,63,15,14,0); fillRect(70,15,11,11,0); fillRect(16,69,13,11,0);
@@ -258,6 +349,8 @@ function buildRealm() {
   wallRect(71,65,11,10,2, [[71,70]]);
   wallRect(72,17,7,7,6, [[75,23]]);
   fillRect(18,72,9,5,3); carveRoad(22,74,27,79,1);
+  placeLegacyMaze();
+  addSeededFrontierSites();
 }
 buildRealm();
 
@@ -297,12 +390,16 @@ function addSprite(x, y, type) {
 }
 function seedRealmObjects() {
   for (let y=3; y<MAPH-3; y++) for (let x=3; x<MAPW-3; x++) {
-    const nearRoad = Math.abs(x-y) < 4 || Math.abs((x+y)-96) < 4;
-    if (!nearRoad && tileAt(x+.5,y+.5) === 0 && hash2(x,y,11) > .91) addSprite(x+.5,y+.5,"tree");
+    const ground=groundAt(x+.5,y+.5);
+    const protectedArea=LANDMARKS.some(site=>Math.hypot(site.x-x,site.y-y)<site.radius+1);
+    const treeLine=ground===5 ? .875 : ground===4 ? .925 : .91;
+    if (ground!==1 && !protectedArea && tileAt(x+.5,y+.5)===0 && hash2(x,y,11)>treeLine) addSprite(x+.5,y+.5,"tree");
   }
   addSprite(48.5, 54.5, "banner"); addSprite(45.5, 54.5, "npc");
   addSprite(18.5, 25.5, "npc"); addSprite(76.5, 69.5, "npc");
   addSprite(75.5, 20.5, "ruin"); addSprite(22.5, 71.5, "quarry");
+  addSprite(30.5, 53.5, "maze");
+  for (const site of LANDMARKS) if (site.kind==="frontier") addSprite(site.x+.5,site.y+.5,"marker");
 }
 const SPRITE_GLYPHS = {
   tree:   { rows: ["^", "*", "|"], color: "#3f9f4f" },
@@ -310,6 +407,8 @@ const SPRITE_GLYPHS = {
   banner: { rows: [">", "|", "|"], color: "#d5a63c" },
   ruin:   { rows: ["#", "[", "|"], color: "#8d8c82" },
   quarry: { rows: ["/", "%"],      color: "#aaa18b" },
+  maze:   { rows: ["M", "#", "|"], color: "#b888e8" },
+  marker: { rows: ["?", "|"],      color: "#7fd8c1" },
 };
 seedRealmObjects();
 
@@ -327,7 +426,7 @@ function nearbySprites(radius=24) {
 // ---------------- CHARACTER PALETTES ----------------
 const WALL_SHADES = ["#", "%", "*", "+", "=", "-", ":", "."]; // near -> far
 const FLOOR_CHARS = [",", ".", "`", " "];
-const GROUND_COLORS = ["#50613b", "#806d4e", "#6f624d", "#777269"];
+const GROUND_COLORS = ["#50613b", "#806d4e", "#6f624d", "#777269", "#5e604d", "#40594a"];
 const SKY_CHAR = " ";
 
 function shadeIndex(dist, maxDist, levels) {
@@ -377,10 +476,20 @@ const mapPanel = document.getElementById("map-panel");
 const mapBtn = document.getElementById("map-btn");
 const interactBtn = document.getElementById("interact-btn");
 const contextEl = document.getElementById("context");
+const worldSeedEl = document.getElementById("world-seed");
+const newWorldBtn = document.getElementById("new-world-btn");
 let contextTimer = 0;
 function toggleMap() { mapPanel.hidden = !mapPanel.hidden; if (!mapPanel.hidden) drawMinimap(); }
 mapBtn.addEventListener("click", e => { e.stopPropagation(); toggleMap(); });
 interactBtn.addEventListener("click", e => { e.stopPropagation(); interact(); });
+worldSeedEl.textContent = `SEED ${WORLD_SEED}`;
+worldSeedEl.title = `World seed: ${WORLD_SEED}`;
+newWorldBtn.addEventListener("click", e => {
+  e.stopPropagation();
+  const seed=randomSeed();
+  try { localStorage.setItem("lokrealm-world-seed",seed); } catch (_) {}
+  const url=new URL(location.href); url.searchParams.set("seed",seed); location.href=url.toString();
+});
 
 function nearestLandmark() {
   let nearest = null, best = Infinity;
@@ -453,7 +562,7 @@ function onTouchStart(e) {
   releaseStaleTouches(e);
   debugTouchStarts++;
   for (const t of e.changedTouches) {
-    if (t.target.closest("#gyro-btn, #invert-gyro-btn, #map-btn, #interact-btn")) continue;
+    if (t.target.closest("#gyro-btn, #invert-gyro-btn, #map-btn, #interact-btn, #new-world-btn")) continue;
     if (t.clientX < window.innerWidth / 2) {
       if (joystickTouchId !== null) continue;
       joystickTouchId = t.identifier;
@@ -644,7 +753,7 @@ function drawMinimap() {
   minimapCtx.fillStyle = "#10170f"; minimapCtx.fillRect(0,0,size,size);
   for (let y=0; y<cells; y++) for (let x=0; x<cells; x++) {
     const wx=ox+x, wy=oy+y, material=tileAt(wx+.5,wy+.5), ground=groundAt(wx+.5,wy+.5);
-    minimapCtx.fillStyle = material === 0 ? (ground === 1 ? "#695c45" : ground === 2 ? "#4f483a" : ground === 3 ? "#69665f" : hash2(wx,wy,4)>.7 ? "#20331e" : "#1a2b19")
+    minimapCtx.fillStyle = material === 0 ? (ground === 1 ? "#695c45" : ground === 2 ? "#4f483a" : ground === 3 ? "#69665f" : ground === 4 ? "#34392f" : ground === 5 ? "#18342d" : hash2(wx,wy,4)>.7 ? "#20331e" : "#1a2b19")
       : material === 2 ? "#865d35" : material === 3 ? "#526844"
       : material === 4 ? "#888675" : material === 5 ? "#aaa187" : "#5c6068";
     minimapCtx.fillRect(x*cell,y*cell,Math.ceil(cell),Math.ceil(cell));
@@ -652,7 +761,7 @@ function drawMinimap() {
   for (const site of LANDMARKS) {
     const sx=(site.x-ox+.5)*cell, sy=(site.y-oy+.5)*cell;
     if (sx<0||sy<0||sx>size||sy>size) continue;
-    minimapCtx.fillStyle = site.kind === "ruin" ? "#a4a39b" : site.kind === "resource" ? "#d0b47a" : "#e1c85e";
+    minimapCtx.fillStyle = site.kind === "maze" ? "#c490ff" : site.kind === "frontier" ? "#63cdb5" : site.kind === "ruin" ? "#a4a39b" : site.kind === "resource" ? "#d0b47a" : "#e1c85e";
     minimapCtx.fillRect(sx-2,sy-2,5,5);
   }
   const px=(player.x-ox)*cell, py=(player.y-oy)*cell;
@@ -666,11 +775,13 @@ function updateRealmHud(dt) {
   const region = REGIONS.find(entry => entry.test(player.x,player.y));
   const { site, distance } = nearestLandmark();
   const insideSite = site && distance <= site.radius;
+  const chunk = CHUNK_META.get(`${Math.floor(player.x/CHUNK_SIZE)},${Math.floor(player.y/CHUNK_SIZE)}`);
   const hours = Math.floor(realmClock.minutes/60), minutes = Math.floor(realmClock.minutes%60);
   document.getElementById("region-name").textContent = insideSite ? site.name : region.name;
   document.getElementById("realm-state").textContent =
     `Day ${realmClock.day} · ${String(hours).padStart(2,"0")}:${String(minutes).padStart(2,"0")}` +
-    (insideSite && site.population ? ` · ${site.population} people · ${Math.round(site.stores)} stores` : " · Open realm");
+    (insideSite && site.population ? ` · ${site.population} people · ${Math.round(site.stores)} stores`
+      : ` · ${chunk ? chunk.biome : "open"} · danger ${chunk ? chunk.danger : 0}`);
   interactBtn.classList.toggle("available", Boolean(site && distance <= site.radius+2));
   mapDrawAccumulator += dt;
   if (!mapPanel.hidden && mapDrawAccumulator >= .15) { mapDrawAccumulator=0; drawMinimap(); }

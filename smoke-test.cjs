@@ -49,6 +49,8 @@ const window = {
 const context = {
   console, Math, Map, Set, Uint8Array, Array, Infinity,
   document, window, navigator:{maxTouchPoints:0},
+  URL, URLSearchParams, location:{search:"?seed=smoke-realm",href:"http://localhost/?seed=smoke-realm"},
+  localStorage:{getItem(){return null;},setItem(){}},
   performance:{now:()=>1000},
   requestAnimationFrame(fn){ nextFrame=fn; },
 };
@@ -59,7 +61,9 @@ if (!nextFrame) throw new Error("game loop did not schedule a frame");
 const frame = nextFrame; nextFrame = null; frame(1016);
 if (!element("screen").innerHTML.includes("<span")) throw new Error("renderer produced no colored realm output");
 if (!element("pos").textContent.includes("48.5")) throw new Error("player did not spawn in Lokhaven");
+if (context.tileAt(7.5,44.5)!==1 || context.tileAt(8.5,45.5)!==0) throw new Error("the original maze layout was not preserved");
+if (context.tileAt(31.5,53.5)!==0) throw new Error("the original maze has no accessible eastern gate");
 context.drawMinimap();
 context.interact();
 if (!element("context").textContent.includes("Lokhaven Hold")) throw new Error("landmark interaction is not connected");
-console.log("Lokrealm smoke test passed: world, renderer, map, and interaction initialized.");
+console.log("Lokrealm smoke test passed: seeded chunks, original maze, renderer, map, and interaction initialized.");

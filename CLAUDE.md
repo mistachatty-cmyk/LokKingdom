@@ -36,6 +36,11 @@ from scratch as a small, expandable foundation rather than a demo.
   wall materials stay separate from meadow, road, settlement, and quarry
   ground. `buildRealm()` deterministically lays out the current medieval
   slice so it stays self-contained.
+- `WORLD_SEED` / `CHUNK_META`: a remembered or `?seed=`-supplied value drives
+  deterministic 16×16 biome chunks, rough terrain, tree density, frontier
+  sites, and danger. Authored story locations stay stable across seeds.
+- `LEGACY_MAZE`: preserves the original 25×16 test map as **The First Maze**
+  at world coordinates `(7,44)`, with one eastern access tile added.
 - `LANDMARKS` / `REGIONS`: authored realm identity and lightweight
   settlement values without adding player identity.
 - `SPRITE_BUCKETS`: world objects bucketed into 16×16 chunks;
