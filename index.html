@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>LokKingdom</title>
 <style>
-  html,body{margin:0;height:100%;background:#05070a;overflow:hidden;}
+  html,body{margin:0;height:100%;background:#05070a;overflow:hidden;touch-action:none;}
   #screen{
     font-family: "Courier New", monospace;
     font-weight:bold;
@@ -175,9 +175,12 @@ window.addEventListener("keydown", e => { keys[e.key.toLowerCase()] = true; });
 window.addEventListener("keyup",   e => { keys[e.key.toLowerCase()] = false; });
 
 const screenEl = document.getElementById("screen");
-document.body.addEventListener("click", () => {
-  screenEl.requestPointerLock && screenEl.requestPointerLock();
-});
+const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
+if (!isTouchDevice) {
+  document.body.addEventListener("click", () => {
+    screenEl.requestPointerLock && screenEl.requestPointerLock();
+  });
+}
 document.addEventListener("mousemove", e => {
   if (document.pointerLockElement === screenEl) {
     player.angle += e.movementX * MOUSE_SENS;
@@ -261,7 +264,7 @@ function onDeviceOrientation(e) {
   if (gyroNeutralBeta === null) { gyroNeutralBeta = e.beta; gyroNeutralGamma = e.gamma; }
   const dGamma = Math.max(-GYRO_TILT_RANGE_DEG, Math.min(GYRO_TILT_RANGE_DEG, e.gamma - gyroNeutralGamma));
   const dBeta = Math.max(-GYRO_TILT_RANGE_DEG, Math.min(GYRO_TILT_RANGE_DEG, e.beta - gyroNeutralBeta));
-  gyroYaw = dGamma / GYRO_TILT_RANGE_DEG;
+  gyroYaw = -dGamma / GYRO_TILT_RANGE_DEG; // tilting right should turn right, not left
   gyroPitch = dBeta / GYRO_TILT_RANGE_DEG;
 }
 function startGyro() {
