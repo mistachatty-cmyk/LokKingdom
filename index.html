@@ -225,7 +225,27 @@ let joystickCenterX = 0, joystickCenterY = 0;
 let lookTouchId = null, lookLastX = 0, lookLastY = 0;
 let debugTouchStarts = 0, debugTouchMoves = 0, debugTouchEnds = 0;
 
+// iOS Safari can fail to deliver touchend/touchcancel for a touch in rare cases,
+// leaving joystickTouchId/lookTouchId permanently "claimed" by a dead touch that
+// no new real touch can ever match — cross-check against the browser's own live
+// touch list (e.touches) on every event and release anything no longer present.
+function isTouchStillActive(e, id) {
+  for (let i = 0; i < e.touches.length; i++) if (e.touches[i].identifier === id) return true;
+  return false;
+}
+function releaseStaleTouches(e) {
+  if (joystickTouchId !== null && !isTouchStillActive(e, joystickTouchId)) {
+    joystickTouchId = null; joyDX = 0; joyDY = 0;
+    joystickNub.style.transform = "translate(0, 0)";
+    joystickBase.classList.remove("active");
+  }
+  if (lookTouchId !== null && !isTouchStillActive(e, lookTouchId)) {
+    lookTouchId = null;
+  }
+}
+
 function onTouchStart(e) {
+  releaseStaleTouches(e);
   debugTouchStarts++;
   for (const t of e.changedTouches) {
     if (t.target.closest("#gyro-btn, #invert-gyro-btn")) continue;
@@ -245,6 +265,7 @@ function onTouchStart(e) {
   }
 }
 function onTouchMove(e) {
+  releaseStaleTouches(e);
   debugTouchMoves++;
   for (const t of e.changedTouches) {
     if (t.identifier === joystickTouchId) {
