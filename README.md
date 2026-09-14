@@ -1,6 +1,6 @@
-# LokKingdom
+# LokRealm
 
-A tiny, zero-dependency 3D engine that renders a grid-based world as
+A tiny, zero-dependency living-world engine that renders a seeded world as
 colored ASCII/text characters — one raycast per screen column, no
 Three.js, no models, no build step. The whole game is a single
 `index.html` file you can open directly in a browser or drop onto any
@@ -20,6 +20,8 @@ mouse look to behave consistently across browsers).
 - `W A S D` / arrow keys — move
 - `Q` / `E` — turn
 - Click the screen, then move the mouse — free look (pointer lock)
+- `F` / Space — talk, inspect, or use the equipped axe
+- `I` — inventory; `M` — minimap; `Tab` — world editor; `P` — pause
 - **Touch** (phones/tablets): dual joysticks, both dynamic — a stick
   pops up right where you touch down rather than sitting fixed in a
   corner. Left half of the screen moves, right half looks (holding it
