@@ -142,6 +142,11 @@ at the repo root is served as-is, no build command needed.
   nursery capacity, and root links. Inspect/advance it with the `J` ledger.
 - Each race has six population stages. Stage changes can construct semantic
   buildings; weekly exchange develops the initial Human–Diligy relationship.
+- `ELEVATION`, `WATER`, `WATER_SOURCES`, and `BASE_GROUND` are the shallow-water
+  sandbox. `simulateWater()` runs at a capped 0.12-second step and flows water
+  only through non-wall cells. Keep it small-grid and browser-native:
+  `wkwan/flo` is Rust/Vulkan and explicitly not web-ready, so it is reference
+  material rather than a dependency or integration target.
 
 ## Roadmap (priority order)
 
