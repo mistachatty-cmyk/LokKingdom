@@ -5,7 +5,7 @@ session in this repo. Keep it current as the project evolves.
 
 ## What this is
 
-LokKingdom — a zero-dependency ASCII/text-rendered 3D engine. The world
+LokRealm — a zero-dependency ASCII/text-rendered 3D engine. The world
 is a grid, rendered with one raycast per screen column (Wolfenstein-
 style DDA), and every visible surface is a colored monospace character
 instead of a textured pixel. No Three.js, no 3D models, no build step.
@@ -121,16 +121,23 @@ Deploys to Vercel as a static site (`vercel.json` sets `framework:
 null` so Vercel doesn't try to detect/build a framework) — `index.html`
 at the repo root is served as-is, no build command needed.
 
+## Implemented living-world systems
+
+- Deterministic 48x48 seeded generation with connected roads, wilderness,
+  village prefabs, and the preserved Whisper Maze landmark.
+- Separate ground and collision layers, local saves, and portable world export.
+- Four named NPCs with roles, scheduled wandering, dialogue, quests, and trade.
+- Axe/tree harvesting, inventory, minimap, main/pause UI, and a paint editor.
+
 ## Roadmap (priority order)
 
-1. Load `MAP` from a JSON/data file instead of a hardcoded string, so
-   levels can be authored separately from engine code
-2. Variable wall heights read per-tile (not just per-material)
-3. More sprite types + simple animation frames (idle bob, etc.)
-4. Basic interaction: walking into a sprite triggers a message/pickup
-5. Minimap overlay (toggle key), reusing the same `MAP` data
-6. Simple NPC movement (wander or chase within the grid)
-7. Multiple maps / level transitions
+1. Deterministic neighboring chunk streaming with small saved edit deltas
+2. Prefab rotation, sockets, weighted village grammar, bridges, and road grades
+3. NPC memory, relationships, needs, occupations, and data-driven dialogue nodes
+4. Variable terrain elevation, stairs, and then progressive voxel capabilities
+5. World JSON import plus editor undo/redo and prefab placement
+6. Multiple biomes and an urban prefab/generation catalog
+7. Sprite animation frames and seasonal/day-night palettes
 8. Swap `<pre>` + spans for `<canvas>` + `fillText` if color count or
    frame size makes DOM spans a measured bottleneck (don't do this
    preemptively — only if profiling shows it's needed)
