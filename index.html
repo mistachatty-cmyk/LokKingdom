@@ -95,6 +95,7 @@
   #gyro-btn{ top:16px; }
   #invert-gyro-btn{ top:52px; }
   #pause-btn{position:fixed;top:10px;right:12px;z-index:45;font:11px monospace;background:rgba(14,24,18,.88)}
+  #settings-btn{position:fixed;top:10px;right:94px;z-index:45;font:12px monospace;background:rgba(14,24,18,.88)}
   button{font:inherit;color:#e8d7a2;background:#182018;border:1px solid #71865a;border-radius:4px;padding:7px 10px}
   button:hover,button:focus{background:#293829;outline:1px solid #c8a85b}
   .panel{position:fixed;z-index:30;color:#e8d7a2;background:rgba(7,10,8,.94);border:1px solid #71865a;
@@ -107,8 +108,12 @@
   #inventory{right:12px;top:96px;min-width:180px}#inventory div{display:flex;justify-content:space-between}
   #toast{position:fixed;z-index:40;left:50%;top:14%;transform:translateX(-50%);color:#f4d77c;
     background:#101710dd;border:1px solid #71865a;padding:8px 14px;font:12px monospace;pointer-events:none}
-  #map-panel{left:10px;top:52px;padding:8px;white-space:pre;font:7px/1 monospace;color:#9fcf85;max-width:none}
+  #map-panel{left:10px;top:52px;padding:8px;font:7px/1 monospace;color:#9fcf85;max-width:none}
+  #map-display{margin:0;white-space:pre;line-height:1;cursor:crosshair}.map-legend{display:block;margin-top:7px;color:#b9cbb0;font:10px/1.2 monospace}
   #editor{right:10px;bottom:10px;width:min(370px,80vw)}#editor button.active{background:#745b2a;color:#fff}
+  #settings-panel{left:50%;top:50%;transform:translate(-50%,-50%);width:min(420px,82vw)}
+  .setting-row{display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid #334433;padding:10px 0}
+  .setting-row:first-of-type{border-top:0}.setting-row small{color:#aebb9b;display:block;max-width:260px}
   #settlements-panel{left:50%;top:50%;transform:translate(-50%,-50%);width:min(680px,86vw);max-height:78vh;overflow:auto}
   .settlement-card{border:1px solid #41513d;background:#0d140f;margin:9px 0;padding:10px}
   .settlement-card.human{border-left:4px solid #d6ad68}.settlement-card.diligy{border-left:4px solid #59c86b}
@@ -117,11 +122,11 @@
   .stat-grid b{display:block;color:#e9d7a5}.race-tag{float:right;color:#83d795}
   #crosshair{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);color:#ffffff88;font:15px monospace;pointer-events:none}
   #action-btn{position:fixed;right:20px;bottom:132px;width:62px;height:62px;border-radius:50%;display:none;z-index:20}
-  @media(pointer:coarse){#action-btn{display:block}.panel{font-size:11px}#inventory{top:92px}#pause-btn{left:145px;right:auto}}
+  @media(pointer:coarse){#action-btn{display:block}.panel{font-size:11px}#inventory{top:92px}#pause-btn{left:145px;right:auto}#settings-btn{left:238px;right:auto}}
 </style>
 </head>
 <body>
-<div id="hud">FPS: <span id="fps">0</span> &nbsp; pos: <span id="pos">-</span></div>
+<div id="hud">FPS: <span id="fps">0</span> &nbsp; pos: <span id="pos">-</span> &nbsp; surf: <span id="surface-mode">ON</span></div>
 <div id="debug-hud" class="touch-ui"></div>
 <pre id="screen"></pre>
 <div id="hint">WASD / Arrows: move &nbsp; Q/E: turn &nbsp; Click + mouse: look</div>
@@ -131,6 +136,7 @@
 <button id="gyro-btn" class="touch-ui">Enable Gyro Look</button>
 <button id="invert-gyro-btn" class="touch-ui">Invert Gyro: On</button>
 <button id="pause-btn" aria-label="Pause game">▶ RESUME</button>
+<button id="settings-btn" aria-label="Open settings">⚙</button>
 <div id="crosshair">+</div>
 <button id="action-btn" class="touch-ui">USE</button>
 <div id="toast" class="hidden"></div>
@@ -139,9 +145,10 @@
   <button data-menu="continue">Enter Realm</button><button data-menu="new">New Seeded Realm</button>
   <button data-menu="settings">Settings</button>
 </section>
+<section id="settings-panel" class="panel hidden"><h2>SETTINGS</h2><div class="setting-row"><span><b>Cinematic Surfaces</b><small>Layered caps, facades and foundations make structures feel solid and prevent low walls from opening into the void.</small></span><button id="cinematic-toggle">On</button></div><p><button id="settings-close">Back</button></p></section>
 <section id="dialogue" class="panel hidden"><div class="name"></div><div class="text"></div><div class="choices"></div></section>
 <section id="inventory" class="panel hidden"><h2>PACK</h2><div><span>Axe</span><b>equipped</b></div><div><span>Wood</span><b id="wood-count">0</b></div><div><span>Coin</span><b id="coin-count">3</b></div><p>I closes pack · F uses/interacts</p></section>
-<pre id="map-panel" class="panel hidden"></pre>
+<section id="map-panel" class="panel hidden"><pre id="map-display"></pre><small class="map-legend">@ You · H Human settlement · D Diligy grove</small></section>
 <section id="editor" class="panel hidden"><h2>WORLD EDITOR</h2><p>Click the minimap or face a tile, then paint. Changes save locally with this seed.</p><div id="editor-tools"></div><p><button id="editor-save">Save</button> <button id="editor-export">Export JSON</button> <button id="editor-close">Close</button></p></section>
 <section id="settlements-panel" class="panel hidden"><h2>REALM SETTLEMENTS</h2><div id="realm-relations"></div><div id="settlement-list"></div><p><button id="advance-day">Advance Simulation Day</button> <button id="settlements-close">Close</button></p><small>J opens this ledger. Settlements continue living while you explore.</small></section>
 
@@ -201,6 +208,12 @@ const MATERIALS = {
   7:{height:1.12,colorNS:"#497d4a",colorEW:"#315d38",name:"living-bark"},
   8:{height:1.22,colorNS:"#6aac57",colorEW:"#477d42",name:"woven-leaf"},
   9:{height:1.38,colorNS:"#66858a",colorEW:"#465f67",name:"tower-stone"}
+};
+const CINEMATIC_SURFACES = {
+  1:{cap:"^",trim:"=",foundation:"#",color:"#697b55"}, 2:{cap:"/",trim:"+",foundation:"#",color:"#8d6545"},
+  3:{cap:"=",trim:"%",foundation:"#",color:"#9a805a"}, 4:{cap:"^",trim:"#",foundation:"%",color:"#66707b"},
+  5:{cap:"-",trim:"+",foundation:"=",color:"#805437"}, 6:{cap:"/",trim:"+",foundation:"#",color:"#c1aa78"},
+  7:{cap:"*",trim:"Y",foundation:"#",color:"#467c4a"}, 8:{cap:"*",trim:"+",foundation:"Y",color:"#60a754"}, 9:{cap:"^",trim:"%",foundation:"#",color:"#5b6973"}
 };
 const PREFABS = {
   cottage:["22222","2...2","2...2","2...2","22.22"],
@@ -359,6 +372,7 @@ function darken(hex, factor) {
 // ---------------- PLAYER ----------------
 const player = { x: 24.5, y: 25.5, angle: -Math.PI/2, pitch: 0 };
 let paused=true, editorTool=2, toastTimer=0, worldMinutes=8*60;
+let cinematicSurfaces=localStorage.getItem("lokrealm-cinematic-surfaces")!=="off";
 
 // ---------------- INPUT ----------------
 const keys = {};
@@ -431,7 +445,7 @@ function onTouchStart(e) {
   releaseStaleTouches(e);
   debugTouchStarts++;
   for (const t of e.changedTouches) {
-    if (t.target.closest("#gyro-btn, #invert-gyro-btn, #pause-btn")) continue;
+    if (t.target.closest("#gyro-btn, #invert-gyro-btn, #pause-btn, #settings-btn, .panel")) continue;
     if (t.clientX < window.innerWidth / 2) {
       if (joystickTouchId !== null) continue;
       joystickTouchId = t.identifier;
@@ -537,14 +551,26 @@ const $=id=>document.getElementById(id);
 function refreshUI(){$("wood-count").textContent=inventory.wood;$('coin-count').textContent=inventory.coin}
 function showToast(message){const el=$("toast");el.textContent=message;el.classList.remove("hidden");clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.add("hidden"),1800)}
 function togglePanel(id,redraw=false){$(id).classList.toggle("hidden");if(redraw&&!$(id).classList.contains("hidden"))drawMap()}
-function closeOverlays(){["dialogue","inventory","editor","settlements-panel"].forEach(id=>$(id).classList.add("hidden"))}
+function closeOverlays(){["dialogue","inventory","editor","settlements-panel","settings-panel"].forEach(id=>$(id).classList.add("hidden"))}
 function syncPauseButton(){const b=$("pause-btn");if(b)b.textContent=paused?"▶ RESUME":"Ⅱ PAUSE"}
+function syncCinematicControl(){const b=$("cinematic-toggle");if(b)b.textContent=cinematicSurfaces?"On":"Off";const mode=$("surface-mode");if(mode)mode.textContent=cinematicSurfaces?"ON":"CLASSIC"}
+let settingsReturnToMenu=true;
+function openSettings(fromMenu=false){
+  settingsReturnToMenu=fromMenu;
+  if(fromMenu)$("main-menu").classList.add("hidden");
+  else{paused=true;syncPauseButton()}
+  $("settings-panel").classList.remove("hidden");
+  syncCinematicControl();
+}
 function togglePause(){paused=!paused;closeOverlays();$("main-menu").classList.toggle("hidden",!paused);syncPauseButton();if(!paused)showToast("Realm resumed")}
 $('pause-btn').onclick=e=>{e.stopPropagation();togglePause()};
+$('settings-btn').onclick=e=>{e.stopPropagation();openSettings(!$('main-menu').classList.contains('hidden'))};
+$('cinematic-toggle').onclick=()=>{cinematicSurfaces=!cinematicSurfaces;localStorage.setItem("lokrealm-cinematic-surfaces",cinematicSurfaces?"on":"off");syncCinematicControl();showToast(cinematicSurfaces?"Cinematic Surfaces enabled":"Classic Surface mode enabled")};
+$('settings-close').onclick=()=>{const returnToMenu=settingsReturnToMenu;$('settings-panel').classList.add('hidden');if(returnToMenu)$('main-menu').classList.remove('hidden');else{paused=false;syncPauseButton();showToast('Realm resumed')}};
 document.querySelectorAll("[data-menu]").forEach(btn=>btn.onclick=()=>{
   const action=btn.dataset.menu;
   if(action==="new")generateWorld((Math.random()*2147483647)|0);
-  if(action==="settings"){showToast("Gyro controls are at top-right · M map · Tab editor");return}
+  if(action==="settings"){openSettings(true);return}
   paused=false;$("main-menu").classList.add("hidden");syncPauseButton();showToast("Seed "+worldSeed+" · follow the road to the village");
 });
 function nearestSprite(max=1.65){let best=null,bd=max;for(const s of SPRITES){const d=Math.hypot(s.x-player.x,s.y-player.y);if(d<bd){best=s;bd=d}}return best}
@@ -579,12 +605,12 @@ function drawMap(){
     const npc=NPCS.find(n=>Math.floor(n.x)===x&&Math.floor(n.y/2)===Math.floor(y/2));
     const tree=SPRITES.some(s=>["tree","pine","oak","birch","autumn"].includes(s.type)&&Math.floor(s.x)===x&&Math.floor(s.y/2)===Math.floor(y/2));
     row+=settlement?(settlement.race==="human"?"H":"D"):npc?(npc.race==="diligy"?"d":"n"):MAP[y][x]?"#":GROUND[y][x]==="r"?"=":GROUND[y][x]==="w"?"~":tree?"^":".";
-  }lines.push(row)}$("map-panel").textContent=lines.join("\n")+"\n\n@ You · H Human settlement · D Diligy grove"}
+  }lines.push(row)}$("map-display").textContent=lines.join("\n")}
 function openEditor(){paused=true;syncPauseButton();$("editor").classList.remove("hidden");$("map-panel").classList.remove("hidden");drawMap()}
 const toolDefs=[[0,"Erase"],[1,"Hedge"],[2,"Timber"],[3,"Stone"],[4,"Keep"],[5,"Fence"],["r","Road"],["tree","Tree"],["spring","Water Spring"],["raise","Raise Land"]];
 toolDefs.forEach(([v,label])=>{const b=document.createElement("button");b.textContent=label;b.onclick=()=>{editorTool=v;document.querySelectorAll("#editor-tools button").forEach(x=>x.classList.remove("active"));b.classList.add("active")};$("editor-tools").appendChild(b)});
 $("editor-tools").children[2].classList.add("active");
-$("map-panel").onclick=e=>{if($("editor").classList.contains("hidden"))return;const r=e.currentTarget.getBoundingClientRect(),x=Math.floor((e.clientX-r.left)/r.width*MAPW),y=Math.floor((e.clientY-r.top)/r.height*MAPH);if(editorTool==="r"){MAP[y][x]=0;GROUND[y][x]="r";BASE_GROUND[y][x]="r"}else if(editorTool==="tree"){MAP[y][x]=0;SPRITES.push({x:x+.5,y:y+.5,type:"tree",solid:true,hp:3})}else if(editorTool==="spring"){MAP[y][x]=0;BASE_GROUND[y][x]="g";GROUND[y][x]="w";WATER[y][x]=.8;WATER_SOURCES[y][x]=true}else if(editorTool==="raise"){ELEVATION[y][x]=Math.min(1.25,ELEVATION[y][x]+.18);if(WATER[y][x]>.1)WATER[y][x]=Math.max(0,WATER[y][x]-.08)}else MAP[y][x]=Number(editorTool);drawMap()};
+$("map-display").onclick=e=>{if($("editor").classList.contains("hidden"))return;const r=e.currentTarget.getBoundingClientRect(),x=Math.floor((e.clientX-r.left)/r.width*MAPW),y=Math.floor((e.clientY-r.top)/r.height*MAPH);if(editorTool==="r"){MAP[y][x]=0;GROUND[y][x]="r";BASE_GROUND[y][x]="r"}else if(editorTool==="tree"){MAP[y][x]=0;SPRITES.push({x:x+.5,y:y+.5,type:"tree",solid:true,hp:3})}else if(editorTool==="spring"){MAP[y][x]=0;BASE_GROUND[y][x]="g";GROUND[y][x]="w";WATER[y][x]=.8;WATER_SOURCES[y][x]=true}else if(editorTool==="raise"){ELEVATION[y][x]=Math.min(1.25,ELEVATION[y][x]+.18);if(WATER[y][x]>.1)WATER[y][x]=Math.max(0,WATER[y][x]-.08)}else MAP[y][x]=Number(editorTool);drawMap()};
 $("editor-save").onclick=()=>saveWorld();$("editor-close").onclick=()=>{$("editor").classList.add("hidden");paused=false;syncPauseButton()};
 $("editor-export").onclick=()=>{const blob=new Blob([JSON.stringify({format:"LokRealmWorld/3",seed:worldSeed,map:MAP,ground:GROUND,baseGround:BASE_GROUND,elevation:ELEVATION,water:WATER,waterSources:WATER_SOURCES,heights:HEIGHTS,cellMeta:CELL_META,structures:STRUCTURES,settlements:SETTLEMENTS,factions:FACTIONS,simulationDay,prefabs:Object.keys(PREFABS),buildingBlueprints:Object.keys(BUILDING_BLUEPRINTS)},null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="lokrealm-"+worldSeed+".json";a.click();URL.revokeObjectURL(a.href)};
 
@@ -784,7 +810,11 @@ function render() {
 
     const mat = MATERIALS[material] || MATERIALS[1];
     const meta=CELL_META[mapY]&&CELL_META[mapY][mapX];
-    const cellHeight=HEIGHTS[mapY]&&HEIGHTS[mapY][mapX]||mat.height;
+    const surfaceProfile=CINEMATIC_SURFACES[material]||CINEMATIC_SURFACES[1];
+    const rawHeight=HEIGHTS[mapY]&&HEIGHTS[mapY][mapX]||mat.height;
+    // Classic mode preserves low fences/pillars. Cinematic mode gives every
+    // hit a complete shell so the raycaster never exposes the empty backdrop.
+    const cellHeight=cinematicSurfaces?Math.max(.96,rawHeight):rawHeight;
     const wallHeight = Math.min(ROWS, Math.floor((ROWS / (correctedDist + 0.0001)) * cellHeight));
     const wallTop = Math.max(0, horizon - Math.floor(wallHeight / 2));
     const wallBottom = Math.min(ROWS - 1, horizon + Math.floor(wallHeight / 2));
@@ -802,6 +832,10 @@ function render() {
         if(meta&&meta.roof&&wallT<.24){chGrid[row][col]=side===0?"/":"\\";colGrid[row][col]=darken(meta.roof,shade/WALL_SHADES.length*.55+(1-daylight)*.25)}
         else if(meta&&meta.feature==="D"&&wallT>.35){chGrid[row][col]=wallT<.46?"_":"|";colGrid[row][col]=darken("#593b28",shade/WALL_SHADES.length*.45)}
         else if(meta&&meta.feature==="W"&&wallT>.32&&wallT<.68){chGrid[row][col]=(Math.floor(sceneTime*1.5+mapX+mapY)%5===0)?"*":"o";colGrid[row][col]=darken("#8fc6d6",(1-daylight)*.35)}
+        else if(cinematicSurfaces&&wallT<.10){chGrid[row][col]=surfaceProfile.cap;colGrid[row][col]=darken(surfaceProfile.color,shade/WALL_SHADES.length*.38+(1-daylight)*.16)}
+        else if(cinematicSurfaces&&wallT<.22){chGrid[row][col]=surfaceProfile.trim;colGrid[row][col]=darken(surfaceProfile.color,shade/WALL_SHADES.length*.5+(1-daylight)*.24)}
+        else if(cinematicSurfaces&&wallT>.85){chGrid[row][col]=surfaceProfile.foundation;colGrid[row][col]=darken(surfaceProfile.color,.28+shade/WALL_SHADES.length*.42+(1-daylight)*.26)}
+        else if(cinematicSurfaces&&((Math.floor(wallT*11)+mapX+mapY)%7===0)){chGrid[row][col]=surfaceProfile.trim;colGrid[row][col]=darken(surfaceProfile.color,.18+shade/WALL_SHADES.length*.5+(1-daylight)*.24)}
         else{chGrid[row][col]=wallChar;colGrid[row][col]=wallColor}
       } else {
         const floorDepth = row - horizon;
