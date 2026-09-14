@@ -200,9 +200,12 @@ const NPC_ARCHETYPES = [
   {name:"Tomas",role:"guard",color:"#9fbbe8",lines:["I patrol between the square and gate until sundown.","A road is a promise that someone expects you home."],quest:"Speak to everyone in the village before leaving."}
 ];
 const SPRITE_GLYPHS = {
-  tree:{rows:["^","*","|"],color:"#3fbf5f"}, stump:{rows:["_"],color:"#8b623f"},
-  npc:{rows:["o","|"],color:"#e0c060"}, sign:{rows:["[]","|"],color:"#d4b06a"},
-  well:{rows:["o","#"],color:"#8aa2a8"}, flower:{rows:["*"],color:"#d67bb4"}
+  tree:{rows:["^","*","|"],color:"#4ea95a"}, pine:{rows:["^","^","|"],color:"#246e4b"},
+  oak:{rows:["*","*","|"],color:"#5fa34a"}, birch:{rows:["*","*","!"],color:"#9bbf72"},
+  autumn:{rows:["*","*","|"],color:"#c8833e"}, bush:{rows:["*","_"],color:"#65943f"},
+  rock:{rows:["#"],color:"#88919a"}, stump:{rows:["_"],color:"#8b623f"},
+  npc:{rows:["o","|"],color:"#e0c060"}, sign:{rows:["=","|"],color:"#d4b06a"},
+  well:{rows:["o","#"],color:"#8aa2a8"}, flower:{rows:["*"],color:"#e276af"}, reed:{rows:["'","|"],color:"#6f9d62"}
 };
 function rand(){rngState=(rngState*1664525+1013904223)>>>0;return rngState/4294967296}
 function hashNoise(x,y){let n=(x*374761393+y*668265263+worldSeed*69069)>>>0;n=(n^(n>>13))*1274126177;return((n^(n>>16))>>>0)/4294967295}
@@ -213,7 +216,15 @@ function addNpc(archetype,x,y,homeX,homeY){const npc={...archetype,x:x+.5,y:y+.5
 function generateWorld(seed=worldSeed){
   worldSeed=seed>>>0;rngState=worldSeed;localStorage.setItem("lokrealm-seed",worldSeed);
   MAP=Array.from({length:MAPH},(_,y)=>Array.from({length:MAPW},(_,x)=>(x===0||y===0||x===MAPW-1||y===MAPH-1)?1:0));
-  GROUND=Array.from({length:MAPH},()=>Array(MAPW).fill("g"));SPRITES=[];NPCS=[];
+  GROUND=Array.from({length:MAPH},(_,y)=>Array.from({length:MAPW},(_,x)=>{
+    const broad=hashNoise(Math.floor(x/5),Math.floor(y/5)),fine=hashNoise(x,y);
+    if(broad<.11&&Math.hypot(x-24,y-24)>13)return "w"; // small seeded ponds/streams
+    if(broad>.72)return "f";
+    if(fine<.17)return "m";
+    return fine>.84?"d":"g";
+  }));SPRITES=[];NPCS=[];
+  // Keep the settlement legible and dry; the surrounding land remains seeded.
+  for(let y=12;y<=36;y++)for(let x=12;x<=36;x++)GROUND[y][x]="g";
   // Crossroads establish a readable village spine; branches vary by seed.
   roadLine(3,24,44,24);roadLine(24,3,24,44);roadLine(24,24,36,12);roadLine(24,24,10,36);
   [[14,18,"cottage"],[28,18,"cottage"],[16,28,"hall"],[29,28,"cottage"]].forEach(p=>stampPrefab(p[2],p[0],p[1]));
@@ -221,8 +232,19 @@ function generateWorld(seed=worldSeed){
   // The original maze survives as a named landmark, separated from town.
   stampPrefab("maze",4,4);SPRITES.push({x:8.5,y:14.5,type:"sign",label:"Whisper Maze"});
   for(let y=2;y<MAPH-2;y++)for(let x=2;x<MAPW-2;x++){
-    if(MAP[y][x]||GROUND[y][x]==="r"||Math.hypot(x-24,y-24)<11)continue;
-    const n=hashNoise(x,y);if(n>.78)SPRITES.push({x:x+.5,y:y+.5,type:"tree",solid:true,hp:3});else if(n<.055)SPRITES.push({x:x+.5,y:y+.5,type:"flower"});
+    const ground=GROUND[y][x],n=hashNoise(x,y),farFromTown=Math.hypot(x-24,y-24)>=11;
+    if(MAP[y][x]||ground==="r"||!farFromTown)continue;
+    if(ground==="w"){if(n>.56)SPRITES.push({x:x+.5,y:y+.5,type:"reed",scale:.75});continue}
+    if(ground==="f"&&n>.42){
+      const types=["pine","oak","birch","tree"],type=types[Math.floor(hashNoise(x+61,y+9)*types.length)];
+      SPRITES.push({x:x+.5,y:y+.5,type,solid:true,hp:3,scale:.95+hashNoise(x+7,y+17)*.45,wind:hashNoise(x+3,y+13)*6.28});
+    }else if(n>.81&&ground!=="m"){
+      SPRITES.push({x:x+.5,y:y+.5,type:"bush",solid:false,scale:.6+hashNoise(x,y+22)*.45,wind:hashNoise(x+5,y)*6.28});
+    }else if(n<.075||ground==="m"&&n<.27){
+      SPRITES.push({x:x+.5,y:y+.5,type:"flower",scale:.5+hashNoise(x+11,y)*.45,wind:hashNoise(x,y+11)*6.28});
+    }else if(n>.76&&n<.79){
+      SPRITES.push({x:x+.5,y:y+.5,type:"rock",scale:.55+hashNoise(x+20,y)*.35});
+    }
   }
   addNpc(NPC_ARCHETYPES[0],21,26,21,26);addNpc(NPC_ARCHETYPES[1],27,26,27,26);
   addNpc(NPC_ARCHETYPES[2],25,20,25,20);addNpc(NPC_ARCHETYPES[3],24,27,24,27);
@@ -235,6 +257,14 @@ function tileAt(x,y){const xi=Math.floor(x),yi=Math.floor(y);if(xi<0||yi<0||xi>=
 const WALL_SHADES = ["#", "%", "*", "+", "=", "-", ":", "."]; // near -> far
 const FLOOR_CHARS = [",", ".", "`", " "];
 const SKY_CHAR = " ";
+const TERRAIN = {
+  g:{color:"#627f45",chars:[",",".","`"," "]}, // grassland
+  f:{color:"#466f3e",chars:[";",",","."," "]}, // forest floor
+  m:{color:"#789354",chars:["'",",","."," "]}, // flower meadow
+  d:{color:"#7e6845",chars:[";",".","`"," "]}, // worn earth
+  w:{color:"#3e7892",chars:["~","~","-"," "]}, // water / stream
+  r:{color:"#b18c58",chars:["=","·","."," "]}  // road
+};
 
 function shadeIndex(dist, maxDist, levels) {
   const t = Math.min(1, dist / maxDist);
@@ -550,11 +580,16 @@ function castRay(rayAngle) {
 
 // ---------------- RENDER ----------------
 function render() {
+  const sceneTime=performance.now()/1000;
+  const sun=Math.max(0,Math.sin(worldMinutes/1440*Math.PI*2-Math.PI/2));
+  const daylight=.2+sun*.8;
+  const skyBase=sun>.18?"#78a9ca":"#303b61";
   const chGrid = new Array(ROWS);
   const colGrid = new Array(ROWS);
   for (let r = 0; r < ROWS; r++) {
-    chGrid[r] = new Array(COLS).fill(SKY_CHAR);
-    colGrid[r] = new Array(COLS).fill("#05070a");
+    const skyChar=r<ROWS*.18?SKY_CHAR:(sun>.22?"·":".");
+    chGrid[r] = new Array(COLS).fill(skyChar);
+    colGrid[r] = new Array(COLS).fill(darken(skyBase,Math.max(0,r/ROWS-.12)*.55));
   }
   const depthBuffer = new Array(COLS).fill(Infinity);
   const horizon = Math.floor(ROWS / 2 + player.pitch);
@@ -575,11 +610,11 @@ function render() {
     const shade = shadeIndex(correctedDist, 16, WALL_SHADES.length);
     const wallChar = WALL_SHADES[shade];
     const baseColor = side === 0 ? mat.colorNS : mat.colorEW;
-    const wallColor = darken(baseColor, shade / WALL_SHADES.length * 0.7);
+    const wallColor = darken(baseColor, shade / WALL_SHADES.length * 0.7+(1-daylight)*.34);
 
     for (let row = 0; row < ROWS; row++) {
       if (row < wallTop) {
-        chGrid[row][col] = SKY_CHAR;
+        // Background already carries a time-of-day sky gradient.
       } else if (row <= wallBottom) {
         chGrid[row][col] = wallChar;
         colGrid[row][col] = wallColor;
@@ -588,9 +623,11 @@ function render() {
         const fi = Math.min(FLOOR_CHARS.length - 1, Math.floor(floorDepth / 5));
         const floorDist=ROWS/Math.max(1,(row-horizon)*1.75);
         const fx=Math.floor(player.x+Math.cos(rayAngle)*floorDist),fy=Math.floor(player.y+Math.sin(rayAngle)*floorDist);
-        const ground=GROUND[fy]&&GROUND[fy][fx];
-        chGrid[row][col] = ground==="r" ? (fi<2?"=":"·") : FLOOR_CHARS[FLOOR_CHARS.length - 1 - fi];
-        colGrid[row][col] = darken(ground==="r"?"#b89662":"#526b3f", 0.12 + fi * 0.13);
+        const ground=GROUND[fy]&&GROUND[fy][fx]||"g",terrain=TERRAIN[ground]||TERRAIN.g;
+        let terrainIndex=Math.min(terrain.chars.length-1,Math.floor(floorDepth/5));
+        if(ground==="w")terrainIndex=(terrainIndex+Math.floor(sceneTime*3+fx+fy))%Math.min(3,terrain.chars.length);
+        chGrid[row][col] = terrain.chars[terrainIndex];
+        colGrid[row][col] = darken(terrain.color,0.08+fi*.14+(1-daylight)*.28);
       }
     }
   }
@@ -606,13 +643,14 @@ function render() {
     if (Math.abs(angleTo) > FOV / 1.4) continue; // outside view cone
 
     const screenXNorm = Math.tan(angleTo) / Math.tan(FOV / 2); // -1..1
-    const col = Math.floor(((screenXNorm + 1) / 2) * COLS);
+    const windShift=spr.wind?Math.round(Math.sin(sceneTime*1.6+spr.wind)*Math.min(2,12/(dist+2))):0;
+    const col = Math.floor(((screenXNorm + 1) / 2) * COLS)+windShift;
     if (col < 0 || col >= COLS) continue;
     if (dist >= depthBuffer[col]) continue; // occluded by a wall
 
     const glyph = SPRITE_GLYPHS[spr.type] || SPRITE_GLYPHS.tree;
     const spriteColor=spr.color||glyph.color;
-    const size = Math.max(1, Math.floor(ROWS / (dist + 0.0001) * 0.5));
+    const size = Math.max(1, Math.floor(ROWS / (dist + 0.0001) * 0.5*(spr.scale||1)));
     const halfW = Math.max(1, Math.floor(size / 3));
     const baseRow = horizon + Math.floor(size / 2);
 
@@ -625,7 +663,7 @@ function render() {
           if (cc < 0 || cc >= COLS) continue;
           if (dist >= depthBuffer[cc]) continue;
           chGrid[row][cc] = glyph.rows[ri];
-          colGrid[row][cc] = darken(spriteColor, Math.min(0.6, dist / 20));
+          colGrid[row][cc] = darken(spriteColor, Math.min(.66,dist/20)+(1-daylight)*.3);
         }
       }
     }
