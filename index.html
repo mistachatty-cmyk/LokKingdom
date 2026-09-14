@@ -108,6 +108,12 @@
     background:#101710dd;border:1px solid #71865a;padding:8px 14px;font:12px monospace;pointer-events:none}
   #map-panel{left:10px;top:52px;padding:8px;white-space:pre;font:7px/1 monospace;color:#9fcf85;max-width:none}
   #editor{right:10px;bottom:10px;width:min(370px,80vw)}#editor button.active{background:#745b2a;color:#fff}
+  #settlements-panel{left:50%;top:50%;transform:translate(-50%,-50%);width:min(680px,86vw);max-height:78vh;overflow:auto}
+  .settlement-card{border:1px solid #41513d;background:#0d140f;margin:9px 0;padding:10px}
+  .settlement-card.human{border-left:4px solid #d6ad68}.settlement-card.diligy{border-left:4px solid #59c86b}
+  .settlement-card h3{margin:0 0 5px}.meter{height:6px;background:#1d291f;margin:5px 0;overflow:hidden}
+  .meter i{display:block;height:100%;background:#72b36f}.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;color:#aebda7}
+  .stat-grid b{display:block;color:#e9d7a5}.race-tag{float:right;color:#83d795}
   #crosshair{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);color:#ffffff88;font:15px monospace;pointer-events:none}
   #action-btn{position:fixed;right:20px;bottom:132px;width:62px;height:62px;border-radius:50%;display:none;z-index:20}
   @media(pointer:coarse){#action-btn{display:block}.panel{font-size:11px}#inventory{top:92px}}
@@ -135,6 +141,7 @@
 <section id="inventory" class="panel hidden"><h2>PACK</h2><div><span>Axe</span><b>equipped</b></div><div><span>Wood</span><b id="wood-count">0</b></div><div><span>Coin</span><b id="coin-count">3</b></div><p>I closes pack · F uses/interacts</p></section>
 <pre id="map-panel" class="panel hidden"></pre>
 <section id="editor" class="panel hidden"><h2>WORLD EDITOR</h2><p>Click the minimap or face a tile, then paint. Changes save locally with this seed.</p><div id="editor-tools"></div><p><button id="editor-save">Save</button> <button id="editor-export">Export JSON</button> <button id="editor-close">Close</button></p></section>
+<section id="settlements-panel" class="panel hidden"><h2>REALM SETTLEMENTS</h2><div id="realm-relations"></div><div id="settlement-list"></div><p><button id="advance-day">Advance Simulation Day</button> <button id="settlements-close">Close</button></p><small>J opens this ledger. Settlements continue living while you explore.</small></section>
 
 <script>
 // ---- visible error reporting: shows the real error on-screen instead of
@@ -176,7 +183,8 @@ const GYRO_YAW_RANGE = Math.PI / 2, GYRO_PITCH_RANGE = 8, GYRO_TILT_RANGE_DEG = 
 // Data stays inline but is cleanly separated from rendering. The generator uses
 // deterministic roads + prefabs, so a seed can be shared now and chunked later.
 const MAPW = 48, MAPH = 48;
-let MAP = [], GROUND = [], SPRITES = [], NPCS = [];
+let MAP = [], GROUND = [], HEIGHTS = [], CELL_META = [], SPRITES = [], NPCS = [];
+let STRUCTURES = [], SETTLEMENTS = [], PEOPLE = [], FACTIONS = [], simulationDay = 1;
 let worldSeed = Number(localStorage.getItem("lokrealm-seed")) || 616;
 let rngState = worldSeed >>> 0;
 const inventory = { axe: 1, wood: 0, coin: 3 };
@@ -185,7 +193,11 @@ const MATERIALS = {
   2:{height:1,colorNS:"#96714b",colorEW:"#755437",name:"timber"},
   3:{height:.68,colorNS:"#b99a66",colorEW:"#8d7049",name:"stone"},
   4:{height:1.18,colorNS:"#6d7180",colorEW:"#505560",name:"keep"},
-  5:{height:.35,colorNS:"#976747",colorEW:"#704933",name:"fence"}
+  5:{height:.35,colorNS:"#976747",colorEW:"#704933",name:"fence"},
+  6:{height:1.05,colorNS:"#d0b982",colorEW:"#aa925f",name:"plaster"},
+  7:{height:1.12,colorNS:"#497d4a",colorEW:"#315d38",name:"living-bark"},
+  8:{height:1.22,colorNS:"#6aac57",colorEW:"#477d42",name:"woven-leaf"},
+  9:{height:1.38,colorNS:"#66858a",colorEW:"#465f67",name:"tower-stone"}
 };
 const PREFABS = {
   cottage:["22222","2...2","2...2","2...2","22.22"],
@@ -193,42 +205,95 @@ const PREFABS = {
   well:["333","3.3","333"],
   maze:["111111111","1...1...1","1.111.1.1","1.....1.1","111.111.1","1.......1","1.11111.1","1.......1","111.11111"]
 };
+const BUILDING_BLUEPRINTS = {
+  cottage:{race:"human",material:6,roof:"#754f37",height:1.05,layout:["#####","#...#","W...W","#...#","##D##"]},
+  longhouse:{race:"human",material:2,roof:"#85613d",height:1.1,layout:["#######","#.....#","W.....W","#.....#","###D###"]},
+  tavern:{race:"human",material:6,roof:"#684733",height:1.3,layout:["#######","W.....W","#.....#","W.....W","###D###"]},
+  watchtower:{race:"human",material:9,roof:"#3f4650",height:1.65,layout:["###","W.W","#D#"]},
+  gatehouse:{race:"human",material:9,roof:"#484d53",height:1.35,layout:["#####","#...#","#.D.#","#...#","#####"]},
+  growthPod:{race:"diligy",material:7,roof:"#275f38",height:1.05,layout:[".###.","#...#","W...W","#...#",".D#D."]},
+  sunCanopy:{race:"diligy",material:8,roof:"#62a84e",height:1.28,layout:["..#..",".###.","#...#","#...#",".D.D."]},
+  rootHall:{race:"diligy",material:7,roof:"#1f5735",height:1.35,layout:[".#####.","#.....#","W.....W","#.....#","##D.D##"]},
+  groveHeart:{race:"diligy",material:8,roof:"#75c95d",height:1.55,layout:["..#..",".###.","##.##",".D.D.","..#.."]}
+};
+const RACES = {
+  human:{name:"Humans",color:"#d6ad68",stages:["Outpost","Hamlet","Village","Town","Fortified City","Kingdom Capital"],thresholds:[0,8,18,40,80,160]},
+  diligy:{name:"Diligy",color:"#59c86b",stages:["Sprout Circle","Young Grove","Root Village","Great Grove","Root Citadel","Green Dominion"],thresholds:[0,6,14,30,60,120]}
+};
+const SETTLEMENT_KINDS = {
+  human:{crossroads:{name:"Crossroads Community",bonuses:{coin:1.15,food:1}},agrarian:{name:"Farming Village",bonuses:{food:1.35}},fortress:{name:"Fort Settlement",bonuses:{safety:1.35}},market:{name:"Market Town",bonuses:{coin:1.4}}},
+  diligy:{sunGrove:{name:"Sun Grove",bonuses:{light:1.35}},rootColony:{name:"Root Colony",bonuses:{rootLinks:1.3}},nursery:{name:"Seedling Sanctuary",bonuses:{growth:1.3}},citadel:{name:"Root Citadel",bonuses:{safety:1.35}}}
+};
 const NPC_ARCHETYPES = [
   {name:"Mara",role:"innkeeper",color:"#e6b86a",lines:["Road dust in your eyes? The Hearth & Thistle has soup.","Travelers say the old hedge maze changes after rain."],quest:"Bring 5 wood and I'll pay 8 coin."},
   {name:"Osric",role:"carpenter",color:"#d28d55",lines:["Good roads make a realm. Good timber keeps it standing.","Plant, harvest, rebuild—that is how villages endure."],quest:"The western fence could use fresh timber."},
   {name:"Elowen",role:"herbalist",color:"#7fdc7f",lines:["I walk at dawn; the quiet plants tell more than people.","The forest follows rules, even when it looks wild."],quest:"Look for the stone maze beyond the north road."},
   {name:"Tomas",role:"guard",color:"#9fbbe8",lines:["I patrol between the square and gate until sundown.","A road is a promise that someone expects you home."],quest:"Speak to everyone in the village before leaving."}
 ];
+const DILIGY_ARCHETYPES = [
+  {name:"Virel",role:"sun-tender",color:"#67d77a",lines:["We lean together when the light is thin.","A grove is not a place. It is everyone sharing what they can."],quest:"Our young pods need water, light, and four linked helpers."},
+  {name:"Mosscap",role:"root-shaper",color:"#3fae62",lines:["Stone is placed. Roots are persuaded.","The new arch will finish when the eastern roots reach it."],quest:"Bring 5 wood; I can teach it to live again."},
+  {name:"Luma-Frond",role:"seed-keeper",color:"#8bea72",lines:["Each seedling remembers the hands that raised it.","We grow slowly alone and quickly in kindness."],quest:"Keep the grove safe from fire, frost, and blight."}
+];
 const SPRITE_GLYPHS = {
   tree:{rows:["^","*","|"],color:"#4ea95a"}, pine:{rows:["^","^","|"],color:"#246e4b"},
   oak:{rows:["*","*","|"],color:"#5fa34a"}, birch:{rows:["*","*","!"],color:"#9bbf72"},
   autumn:{rows:["*","*","|"],color:"#c8833e"}, bush:{rows:["*","_"],color:"#65943f"},
   rock:{rows:["#"],color:"#88919a"}, stump:{rows:["_"],color:"#8b623f"},
-  npc:{rows:["o","|"],color:"#e0c060"}, sign:{rows:["=","|"],color:"#d4b06a"},
-  well:{rows:["o","#"],color:"#8aa2a8"}, flower:{rows:["*"],color:"#e276af"}, reed:{rows:["'","|"],color:"#6f9d62"}
+  npc:{rows:["o","|"],color:"#e0c060"}, diligy:{rows:["*","Y"],color:"#59c86b"}, sign:{rows:["=","|"],color:"#d4b06a"},
+  well:{rows:["o","#"],color:"#8aa2a8"}, flower:{rows:["*"],color:"#e276af"}, reed:{rows:["'","|"],color:"#6f9d62"},
+  chimney:{rows:["~","#"],color:"#74645b"}, banner:{rows:[">","|"],color:"#c94e42"}, seedling:{rows:["v","Y"],color:"#8bea72"}, rootspire:{rows:["*","Y","Y"],color:"#4dbb67"}
 };
 function rand(){rngState=(rngState*1664525+1013904223)>>>0;return rngState/4294967296}
 function hashNoise(x,y){let n=(x*374761393+y*668265263+worldSeed*69069)>>>0;n=(n^(n>>13))*1274126177;return((n^(n>>16))>>>0)/4294967295}
 function setTile(x,y,v){if(x>0&&y>0&&x<MAPW-1&&y<MAPH-1)MAP[y][x]=v}
 function roadLine(x0,y0,x1,y1){let x=x0,y=y0;while(x!==x1||y!==y1){GROUND[y][x]="r";if(x!==x1)x+=Math.sign(x1-x);else y+=Math.sign(y1-y)}GROUND[y1][x1]="r"}
 function stampPrefab(name,ox,oy){const p=PREFABS[name];p.forEach((row,y)=>[...row].forEach((v,x)=>{if(v!==".")setTile(ox+x,oy+y,Number(v))}))}
-function addNpc(archetype,x,y,homeX,homeY){const npc={...archetype,x:x+.5,y:y+.5,homeX:homeX+.5,homeY:homeY+.5,targetX:x+.5,targetY:y+.5,phase:rand()*10,type:"npc"};NPCS.push(npc);SPRITES.push(npc)}
+function stampStructure(type,ox,oy,settlementId){
+  const bp=BUILDING_BLUEPRINTS[type],id=STRUCTURES.length;
+  const structure={id,type,race:bp.race,x:ox,y:oy,w:bp.layout[0].length,h:bp.layout.length,settlementId,condition:100};STRUCTURES.push(structure);
+  bp.layout.forEach((row,ly)=>[...row].forEach((symbol,lx)=>{
+    if(symbol===".")return;const x=ox+lx,y=oy+ly;if(x<=0||y<=0||x>=MAPW-1||y>=MAPH-1)return;
+    MAP[y][x]=bp.material;const ridge=1-Math.abs(lx-(bp.layout[0].length-1)/2)/Math.max(1,bp.layout[0].length/2);
+    HEIGHTS[y][x]=bp.height+ridge*.25;CELL_META[y][x]={structureId:id,feature:symbol==="#"?null:symbol,roof:bp.roof,race:bp.race};
+  }));return structure;
+}
+function addNpc(archetype,x,y,homeX,homeY,race="human",settlementId="hearthmere"){
+  const npc={...archetype,id:"person-"+(PEOPLE.length+1),race,settlementId,x:x+.5,y:y+.5,homeX:homeX+.5,homeY:homeY+.5,targetX:x+.5,targetY:y+.5,phase:rand()*10,type:race==="diligy"?"diligy":"npc"};
+  NPCS.push(npc);PEOPLE.push(npc);SPRITES.push(npc);return npc;
+}
 function generateWorld(seed=worldSeed){
   worldSeed=seed>>>0;rngState=worldSeed;localStorage.setItem("lokrealm-seed",worldSeed);
   MAP=Array.from({length:MAPH},(_,y)=>Array.from({length:MAPW},(_,x)=>(x===0||y===0||x===MAPW-1||y===MAPH-1)?1:0));
+  HEIGHTS=Array.from({length:MAPH},()=>Array(MAPW).fill(0));
+  CELL_META=Array.from({length:MAPH},()=>Array(MAPW).fill(null));
   GROUND=Array.from({length:MAPH},(_,y)=>Array.from({length:MAPW},(_,x)=>{
     const broad=hashNoise(Math.floor(x/5),Math.floor(y/5)),fine=hashNoise(x,y);
     if(broad<.11&&Math.hypot(x-24,y-24)>13)return "w"; // small seeded ponds/streams
     if(broad>.72)return "f";
     if(fine<.17)return "m";
     return fine>.84?"d":"g";
-  }));SPRITES=[];NPCS=[];
+  }));SPRITES=[];NPCS=[];PEOPLE=[];STRUCTURES=[];SETTLEMENTS=[];FACTIONS=[];simulationDay=1;
   // Keep the settlement legible and dry; the surrounding land remains seeded.
   for(let y=12;y<=36;y++)for(let x=12;x<=36;x++)GROUND[y][x]="g";
   // Crossroads establish a readable village spine; branches vary by seed.
-  roadLine(3,24,44,24);roadLine(24,3,24,44);roadLine(24,24,36,12);roadLine(24,24,10,36);
-  [[14,18,"cottage"],[28,18,"cottage"],[16,28,"hall"],[29,28,"cottage"]].forEach(p=>stampPrefab(p[2],p[0],p[1]));
+  roadLine(3,24,44,24);roadLine(24,3,24,44);roadLine(24,24,38,10);roadLine(24,24,10,36);
+  SETTLEMENTS.push({id:"hearthmere",name:"Hearthmere",race:"human",kind:"crossroads",x:24,y:24,stage:1,adults:12,children:4,households:6,
+    resources:{food:68,water:92,wood:34,stone:18,coin:26},capacity:{housing:22,safety:66,care:55},growth:18,history:["Founded beside the old crossroad."]});
+  SETTLEMENTS.push({id:"verdanthold",name:"Verdanthold",race:"diligy",kind:"sunGrove",x:39,y:9,stage:1,mature:9,seedlings:3,helpers:7,
+    resources:{water:84,nutrients:72,light:80,livingWood:24},capacity:{rootLinks:68,safety:52,nursery:18},growth:31,history:["The first roots joined beneath the eastern hill."]});
+  FACTIONS.push({id:"hearthmere-freefolk",name:"Hearthmere Freefolk",race:"human",settlementIds:["hearthmere"],treasury:26,relation:{"verdant-covenant":22}});
+  FACTIONS.push({id:"verdant-covenant",name:"Verdant Covenant",race:"diligy",settlementIds:["verdanthold"],treasury:14,relation:{"hearthmere-freefolk":22}});
+  stampStructure("cottage",14,18,"hearthmere");stampStructure("longhouse",28,18,"hearthmere");
+  stampStructure("tavern",16,28,"hearthmere");stampStructure("cottage",29,28,"hearthmere");
+  stampStructure("watchtower",26,13,"hearthmere");
   stampPrefab("well",22,22);SPRITES.push({x:23.5,y:23.5,type:"well",solid:true});
+  SPRITES.push({x:18.5,y:27.5,type:"chimney",scale:1.1},{x:27.5,y:13.5,type:"banner",scale:1.05});
+  // Diligy architecture is cultivated around a Grove Heart, not laid in a rigid street grid.
+  for(let y=4;y<=15;y++)for(let x=34;x<=45;x++)if(GROUND[y][x]==="w")GROUND[y][x]="m";
+  roadLine(38,10,44,10);stampStructure("groveHeart",37,7,"verdanthold");
+  stampStructure("growthPod",33,11,"verdanthold");stampStructure("sunCanopy",41,12,"verdanthold");
+  SPRITES.push({x:39.5,y:6.5,type:"rootspire",solid:true,scale:1.4},{x:35.5,y:10.5,type:"seedling",scale:.75},{x:43.5,y:11.5,type:"seedling",scale:.7});
   // The original maze survives as a named landmark, separated from town.
   stampPrefab("maze",4,4);SPRITES.push({x:8.5,y:14.5,type:"sign",label:"Whisper Maze"});
   for(let y=2;y<MAPH-2;y++)for(let x=2;x<MAPW-2;x++){
@@ -248,8 +313,11 @@ function generateWorld(seed=worldSeed){
   }
   addNpc(NPC_ARCHETYPES[0],21,26,21,26);addNpc(NPC_ARCHETYPES[1],27,26,27,26);
   addNpc(NPC_ARCHETYPES[2],25,20,25,20);addNpc(NPC_ARCHETYPES[3],24,27,24,27);
-  const saved=localStorage.getItem("lokrealm-world-"+worldSeed);if(saved)try{const d=JSON.parse(saved);if(d.map)MAP=d.map;if(d.ground)GROUND=d.ground;if(d.wood)inventory.wood=d.wood}catch(e){}
-  player.x=24.5;player.y=25.5;player.angle=-Math.PI/2;refreshUI();
+  addNpc(DILIGY_ARCHETYPES[0],39,10,39,10,"diligy","verdanthold");
+  addNpc(DILIGY_ARCHETYPES[1],35,13,35,13,"diligy","verdanthold");
+  addNpc(DILIGY_ARCHETYPES[2],43,13,43,13,"diligy","verdanthold");
+  const saved=localStorage.getItem("lokrealm-world-"+worldSeed);if(saved)try{const d=JSON.parse(saved);if(d.map)MAP=d.map;if(d.ground)GROUND=d.ground;if(d.heights)HEIGHTS=d.heights;if(d.cellMeta)CELL_META=d.cellMeta;if(d.settlements)SETTLEMENTS=d.settlements;if(d.factions)FACTIONS=d.factions;if(d.simulationDay)simulationDay=d.simulationDay;if(d.wood)inventory.wood=d.wood}catch(e){}
+  player.x=24.5;player.y=25.5;player.angle=-Math.PI/2;refreshUI();renderSettlementLedger();
 }
 function tileAt(x,y){const xi=Math.floor(x),yi=Math.floor(y);if(xi<0||yi<0||xi>=MAPW||yi>=MAPH)return 1;return Number(MAP[yi][xi])||0}
 
@@ -291,6 +359,7 @@ window.addEventListener("keydown", e => {
   if(k==="f"||k===" ")interact();
   if(k==="i")togglePanel("inventory");
   if(k==="m")togglePanel("map-panel",true);
+  if(k==="j")openSettlementLedger();
   if(k==="p"||k==="escape")togglePause();
   if(k==="tab"){e.preventDefault();openEditor()}
 });
@@ -299,7 +368,8 @@ window.addEventListener("keyup",   e => { keys[e.key.toLowerCase()] = false; });
 const screenEl = document.getElementById("screen");
 const isTouchDevice = ("ontouchstart" in window) || navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches;
 if (!isTouchDevice) {
-  document.body.addEventListener("click", () => {
+  document.body.addEventListener("click", e => {
+    if(e.target.closest("button,.panel"))return;
     screenEl.requestPointerLock && screenEl.requestPointerLock();
   });
 }
@@ -458,7 +528,7 @@ const $=id=>document.getElementById(id);
 function refreshUI(){$("wood-count").textContent=inventory.wood;$('coin-count').textContent=inventory.coin}
 function showToast(message){const el=$("toast");el.textContent=message;el.classList.remove("hidden");clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.add("hidden"),1800)}
 function togglePanel(id,redraw=false){$(id).classList.toggle("hidden");if(redraw&&!$(id).classList.contains("hidden"))drawMap()}
-function closeOverlays(){["dialogue","inventory","editor"].forEach(id=>$(id).classList.add("hidden"))}
+function closeOverlays(){["dialogue","inventory","editor","settlements-panel"].forEach(id=>$(id).classList.add("hidden"))}
 function togglePause(){paused=!paused;closeOverlays();$("main-menu").classList.toggle("hidden",!paused);if(!paused)showToast("Realm resumed")}
 document.querySelectorAll("[data-menu]").forEach(btn=>btn.onclick=()=>{
   const action=btn.dataset.menu;
@@ -468,14 +538,18 @@ document.querySelectorAll("[data-menu]").forEach(btn=>btn.onclick=()=>{
 });
 function nearestSprite(max=1.65){let best=null,bd=max;for(const s of SPRITES){const d=Math.hypot(s.x-player.x,s.y-player.y);if(d<bd){best=s;bd=d}}return best}
 function interact(){
-  if(paused)return;const s=nearestSprite();if(!s){showToast("Nothing within reach");return}
-  if(s.type==="tree"){
+  if(paused)return;const tx=Math.floor(player.x+Math.cos(player.angle)*1.15),ty=Math.floor(player.y+Math.sin(player.angle)*1.15),cell=CELL_META[ty]&&CELL_META[ty][tx];
+  if(cell&&cell.feature==="D"){const structure=STRUCTURES.find(x=>x.id===cell.structureId),home=structure&&SETTLEMENTS.find(x=>x.id===structure.settlementId);if(home){showToast(`${BUILDING_BLUEPRINTS[structure.type]?structure.type:"building"} · ${home.name}`);return}}
+  const s=nearestSprite();if(!s){showToast("Nothing within reach");return}
+  if(["tree","pine","oak","birch","autumn"].includes(s.type)){
     s.hp=(s.hp||3)-1;showToast(s.hp>0?"Chop! The trunk holds.":"Tree felled · +3 wood");
     if(s.hp<=0){s.type="stump";s.solid=false;inventory.wood+=3;refreshUI()}return;
   }
-  if(s.type==="npc"){openDialogue(s);return}
+  if(s.type==="npc"||s.type==="diligy"){openDialogue(s);return}
   if(s.type==="sign"){showToast(s.label+" — landmark recorded");return}
   if(s.type==="well")showToast("The village well reflects a pale sky.");
+  if(s.type==="rootspire"){openSettlementLedger();return}
+  if(s.type==="seedling"){showToast("A young Diligy reaches toward the shared light.");return}
 }
 $("action-btn").onclick=e=>{e.stopPropagation();interact()};
 function openDialogue(npc){
@@ -483,22 +557,93 @@ function openDialogue(npc){
   box.querySelector(".text").textContent=npc.lines[Math.floor(worldMinutes/180)%npc.lines.length];
   const choices=box.querySelector(".choices");choices.innerHTML="";
   [["Ask about work",()=>{box.querySelector(".text").textContent=npc.quest}],
-   ["Trade 5 wood",()=>{if(inventory.wood>=5){inventory.wood-=5;inventory.coin+=8;refreshUI();showToast("Trade complete · +8 coin")}else showToast("You need 5 wood")}],
+   [npc.race==="diligy"?"Offer 5 wood":"Trade 5 wood",()=>{if(inventory.wood>=5){inventory.wood-=5;inventory.coin+=8;const home=SETTLEMENTS.find(s=>s.id===npc.settlementId);if(home&&home.race==="diligy"){home.resources.livingWood+=5;home.growth+=8;renderSettlementLedger()}refreshUI();showToast(npc.race==="diligy"?"The grove welcomes the timber · +8 coin":"Trade complete · +8 coin")}else showToast("You need 5 wood")}],
    ["Goodbye",()=>{box.classList.add("hidden");paused=false}]].forEach(([label,fn])=>{const b=document.createElement("button");b.textContent=label;b.onclick=fn;choices.appendChild(b)});
 }
-function saveWorld(){localStorage.setItem("lokrealm-world-"+worldSeed,JSON.stringify({version:1,seed:worldSeed,map:MAP,ground:GROUND,wood:inventory.wood}));showToast("Realm saved locally")}
+function saveWorld(silent=false){localStorage.setItem("lokrealm-world-"+worldSeed,JSON.stringify({version:2,seed:worldSeed,map:MAP,ground:GROUND,heights:HEIGHTS,cellMeta:CELL_META,settlements:SETTLEMENTS,factions:FACTIONS,simulationDay,wood:inventory.wood}));if(!silent)showToast("Realm saved locally")}
 function drawMap(){
-  const lines=[];for(let y=0;y<MAPH;y+=2){let row="";for(let x=0;x<MAPW;x++){if(Math.floor(player.x)===x&&Math.floor(player.y/2)===Math.floor(y/2)){row+="@";continue}const npc=NPCS.some(n=>Math.floor(n.x)===x&&Math.floor(n.y/2)===Math.floor(y/2));row+=npc?"N":MAP[y][x]?"#":GROUND[y][x]==="r"?"=":SPRITES.some(s=>s.type==="tree"&&Math.floor(s.x)===x&&Math.floor(s.y/2)===Math.floor(y/2))?"^":"."}lines.push(row)}$("map-panel").textContent=lines.join("\n")}
+  const lines=[];for(let y=0;y<MAPH;y+=2){let row="";for(let x=0;x<MAPW;x++){
+    if(Math.floor(player.x)===x&&Math.floor(player.y/2)===Math.floor(y/2)){row+="@";continue}
+    const settlement=SETTLEMENTS.find(s=>s.x===x&&Math.floor(s.y/2)===Math.floor(y/2));
+    const npc=NPCS.find(n=>Math.floor(n.x)===x&&Math.floor(n.y/2)===Math.floor(y/2));
+    const tree=SPRITES.some(s=>["tree","pine","oak","birch","autumn"].includes(s.type)&&Math.floor(s.x)===x&&Math.floor(s.y/2)===Math.floor(y/2));
+    row+=settlement?(settlement.race==="human"?"H":"D"):npc?(npc.race==="diligy"?"d":"n"):MAP[y][x]?"#":GROUND[y][x]==="r"?"=":GROUND[y][x]==="w"?"~":tree?"^":".";
+  }lines.push(row)}$("map-panel").textContent=lines.join("\n")+"\n\n@ You · H Human settlement · D Diligy grove"}
 function openEditor(){paused=true;$("editor").classList.remove("hidden");$("map-panel").classList.remove("hidden");drawMap()}
 const toolDefs=[[0,"Erase"],[1,"Hedge"],[2,"Timber"],[3,"Stone"],[4,"Keep"],[5,"Fence"],["r","Road"],["tree","Tree"]];
 toolDefs.forEach(([v,label])=>{const b=document.createElement("button");b.textContent=label;b.onclick=()=>{editorTool=v;document.querySelectorAll("#editor-tools button").forEach(x=>x.classList.remove("active"));b.classList.add("active")};$("editor-tools").appendChild(b)});
 $("editor-tools").children[2].classList.add("active");
 $("map-panel").onclick=e=>{if($("editor").classList.contains("hidden"))return;const r=e.currentTarget.getBoundingClientRect(),x=Math.floor((e.clientX-r.left)/r.width*MAPW),y=Math.floor((e.clientY-r.top)/r.height*MAPH);if(editorTool==="r"){MAP[y][x]=0;GROUND[y][x]="r"}else if(editorTool==="tree"){MAP[y][x]=0;SPRITES.push({x:x+.5,y:y+.5,type:"tree",solid:true,hp:3})}else MAP[y][x]=Number(editorTool);drawMap()};
-$("editor-save").onclick=saveWorld;$("editor-close").onclick=()=>{$("editor").classList.add("hidden");paused=false};
-$("editor-export").onclick=()=>{const blob=new Blob([JSON.stringify({format:"LokRealmWorld/1",seed:worldSeed,map:MAP,ground:GROUND,prefabs:Object.keys(PREFABS)},null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="lokrealm-"+worldSeed+".json";a.click();URL.revokeObjectURL(a.href)};
+$("editor-save").onclick=()=>saveWorld();$("editor-close").onclick=()=>{$("editor").classList.add("hidden");paused=false};
+$("editor-export").onclick=()=>{const blob=new Blob([JSON.stringify({format:"LokRealmWorld/2",seed:worldSeed,map:MAP,ground:GROUND,heights:HEIGHTS,cellMeta:CELL_META,structures:STRUCTURES,settlements:SETTLEMENTS,factions:FACTIONS,simulationDay,prefabs:Object.keys(PREFABS),buildingBlueprints:Object.keys(BUILDING_BLUEPRINTS)},null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="lokrealm-"+worldSeed+".json";a.click();URL.revokeObjectURL(a.href)};
+
+// ---------------- SETTLEMENT / POPULATION SIMULATION ----------------
+function settlementPopulation(s){return s.race==="human"?s.adults+s.children:s.mature+s.seedlings}
+function settlementStageFor(s){const thresholds=RACES[s.race].thresholds,pop=settlementPopulation(s);let stage=0;for(let i=0;i<thresholds.length;i++)if(pop>=thresholds[i])stage=i;return stage}
+function clampResource(value,max=999){return Math.max(0,Math.min(max,value))}
+function conditionRatio(...values){return Math.max(0,Math.min(1,...values))}
+function expandSettlement(s,newStage){
+  if(newStage<=s.stage)return;s.stage=newStage;const label=RACES[s.race].stages[newStage];s.history.unshift("Day "+simulationDay+": became a "+label+".");
+  if(s.race==="human"){
+    if(newStage===2){stampStructure("gatehouse",22,36,s.id);s.capacity.safety+=16;s.capacity.housing+=4}
+    if(newStage===3){stampStructure("longhouse",7,26,s.id);s.capacity.housing+=10}
+  }else{
+    if(newStage===2){stampStructure("rootHall",37,16,s.id);s.capacity.rootLinks+=20;s.capacity.nursery+=8}
+    if(newStage===3){stampStructure("sunCanopy",30,7,s.id);s.resources.light+=12}
+  }
+  showToast(s.name+" has grown into a "+label);
+}
+function simulateHumanDay(s){
+  const pop=s.adults+s.children,workers=Math.max(1,s.adults-Math.ceil(s.children*.25));
+  const bonuses=SETTLEMENT_KINDS.human[s.kind].bonuses;
+  s.resources.food=clampResource(s.resources.food+workers*.75*(bonuses.food||1)-pop*.58);
+  s.resources.water=clampResource(s.resources.water+18-pop*.34);
+  s.resources.wood=clampResource(s.resources.wood+workers*.22);
+  const housing=s.capacity.housing/pop,food=s.resources.food/Math.max(1,pop*2),water=s.resources.water/Math.max(1,pop),safety=s.capacity.safety/100,care=s.capacity.care/100;
+  const familyReadiness=conditionRatio(housing,food,water,safety,care);
+  s.growth+=familyReadiness*(1.2+s.households*.08);
+  s.maturation=(s.maturation||0)+s.children*.018;
+  if(s.maturation>=1&&s.children>0){s.maturation-=1;s.children--;s.adults++;s.history.unshift("Day "+simulationDay+": a young resident came of age.")}
+  if(s.growth>=100&&s.capacity.housing>pop){s.growth-=100;s.children++;s.history.unshift("Day "+simulationDay+": a supported household welcomed a child.")}
+  if(simulationDay%12===0&&familyReadiness>.82&&s.capacity.housing>pop+1){s.adults++;s.history.unshift("Day "+simulationDay+": a traveler settled in town.")}
+}
+function simulateDiligyDay(s){
+  const pop=s.mature+s.seedlings,helpers=Math.min(s.mature,s.helpers),networkBonus=1+Math.min(.65,helpers*.055);
+  const bonuses=SETTLEMENT_KINDS.diligy[s.kind].bonuses;
+  s.resources.light=clampResource(s.resources.light+12*(bonuses.light||1)-pop*.32,120);
+  s.resources.water=clampResource(s.resources.water+10-pop*.42,120);
+  s.resources.nutrients=clampResource(s.resources.nutrients+5+s.mature*.18-pop*.36,120);
+  s.capacity.rootLinks=clampResource(s.capacity.rootLinks+s.mature*.16,100);
+  const groveHealth=conditionRatio(s.resources.light/(pop*1.3),s.resources.water/pop,s.resources.nutrients/pop,s.capacity.rootLinks/70,s.capacity.safety/55);
+  s.growth+=helpers*.43*networkBonus*groveHealth*(bonuses.growth||1);
+  s.maturation=(s.maturation||0)+s.seedlings*.035*networkBonus*groveHealth;
+  if(s.maturation>=1&&s.seedlings>0){s.maturation-=1;s.seedlings--;s.mature++;s.helpers++;s.history.unshift("Day "+simulationDay+": a seedling joined the mature root-network.")}
+  if(s.growth>=100&&s.capacity.nursery>s.seedlings){s.growth-=100;s.seedlings++;s.history.unshift("Day "+simulationDay+": the Growth Circle raised a new seedling together.")}
+}
+function simulateRelations(){
+  if(simulationDay%7!==0)return;const human=SETTLEMENTS.find(s=>s.race==="human"),diligy=SETTLEMENTS.find(s=>s.race==="diligy");if(!human||!diligy)return;
+  if(human.resources.wood>=2){human.resources.wood-=2;human.resources.food+=4;diligy.resources.livingWood+=2;diligy.resources.nutrients+=3;
+    FACTIONS[0].relation[FACTIONS[1].id]=Math.min(100,(FACTIONS[0].relation[FACTIONS[1].id]||0)+1);FACTIONS[1].relation[FACTIONS[0].id]=FACTIONS[0].relation[FACTIONS[1].id];
+    human.history.unshift("Day "+simulationDay+": exchanged timber for Diligy-grown medicine.");diligy.history.unshift("Day "+simulationDay+": shared medicine for reclaimed timber.")}
+}
+function simulateSettlementDay(){
+  simulationDay++;for(const s of SETTLEMENTS){if(s.race==="human")simulateHumanDay(s);else simulateDiligyDay(s);expandSettlement(s,settlementStageFor(s));s.history=s.history.slice(0,8)}simulateRelations();
+  renderSettlementLedger();saveWorld(true);
+}
+function meter(value,color){return `<div class="meter"><i style="width:${Math.max(0,Math.min(100,value))}%;background:${color}"></i></div>`}
+function renderSettlementLedger(){
+  if(!$('settlement-list'))return;const relation=FACTIONS.length>1?(FACTIONS[0].relation[FACTIONS[1].id]||0):0;$('realm-relations').innerHTML=`<p>Day ${simulationDay} · Human–Diligy relations: <b>${relation<0?"Hostile":relation<25?"Cautious":relation<60?"Cooperative":"Allied"}</b> (${relation})</p>`;$('settlement-list').innerHTML=SETTLEMENTS.map(s=>{
+    const cfg=RACES[s.race],pop=settlementPopulation(s),stage=cfg.stages[s.stage],kind=SETTLEMENT_KINDS[s.race][s.kind].name,people=s.race==="human"?`${s.adults} adults · ${s.children} children · ${s.households} households`:`${s.mature} mature · ${s.seedlings} seedlings · ${s.helpers} linked helpers`;
+    const resources=Object.entries(s.resources).slice(0,4).map(([k,v])=>`<span><b>${Math.floor(v)}</b>${k}</span>`).join("");
+    const need=s.race==="human"?`Housing ${s.capacity.housing} · Safety ${s.capacity.safety}% · Care ${s.capacity.care}%`:`Root links ${Math.floor(s.capacity.rootLinks)}% · Nursery ${s.capacity.nursery} · Safety ${s.capacity.safety}%`;
+    return `<article class="settlement-card ${s.race}"><span class="race-tag">${cfg.name}</span><h3>${s.name} · ${stage}</h3><div>${kind} · ${pop} residents</div><small>${people}</small>${meter(s.growth,cfg.color)}<small>Next growth cycle ${Math.floor(s.growth)}%</small><div class="stat-grid">${resources}</div><p>${need}</p><small>${s.history[0]||"Its story is beginning."}</small></article>`
+  }).join("")
+}
+function openSettlementLedger(){paused=true;renderSettlementLedger();$('settlements-panel').classList.remove('hidden')}
+$('advance-day').onclick=simulateSettlementDay;$('settlements-close').onclick=()=>{$('settlements-panel').classList.add('hidden');paused=false};
 
 function updateNpcs(dt){
-  worldMinutes=(worldMinutes+dt*2)%1440;
+  const previousMinutes=worldMinutes;worldMinutes=(worldMinutes+dt*2)%1440;if(worldMinutes<previousMinutes)simulateSettlementDay();
   for(const n of NPCS){n.phase-=dt;if(n.phase<=0){n.phase=3+rand()*5;const night=worldMinutes<360||worldMinutes>1200;n.targetX=night?n.homeX:n.homeX+(rand()*8-4);n.targetY=night?n.homeY:n.homeY+(rand()*8-4)}
     const dx=n.targetX-n.x,dy=n.targetY-n.y,d=Math.hypot(dx,dy);if(d>.15){const nx=n.x+dx/d*dt*.42,ny=n.y+dy/d*dt*.42;if(tileAt(nx,ny)===0){n.x=nx;n.y=ny}else n.phase=0}}
 }
@@ -575,7 +720,7 @@ function castRay(rayAngle) {
     ? (mapX - player.x + (1 - stepX) / 2) / (dirX || 1e-9)
     : (mapY - player.y + (1 - stepY) / 2) / (dirY || 1e-9);
 
-  return { dist: Math.max(0.0001, Math.abs(perpDist)), side, material };
+  return { dist: Math.max(0.0001, Math.abs(perpDist)), side, material, mapX, mapY };
 }
 
 // ---------------- RENDER ----------------
@@ -598,12 +743,14 @@ function render() {
   for (let col = 0; col < COLS; col++) {
     const cameraX = (2 * col) / COLS - 1;
     const rayAngle = player.angle + Math.atan(cameraX * Math.tan(FOV / 2));
-    const { dist, side, material } = castRay(rayAngle);
+    const { dist, side, material, mapX, mapY } = castRay(rayAngle);
     const correctedDist = dist * Math.cos(rayAngle - player.angle);
     depthBuffer[col] = correctedDist;
 
     const mat = MATERIALS[material] || MATERIALS[1];
-    const wallHeight = Math.min(ROWS, Math.floor((ROWS / (correctedDist + 0.0001)) * mat.height));
+    const meta=CELL_META[mapY]&&CELL_META[mapY][mapX];
+    const cellHeight=HEIGHTS[mapY]&&HEIGHTS[mapY][mapX]||mat.height;
+    const wallHeight = Math.min(ROWS, Math.floor((ROWS / (correctedDist + 0.0001)) * cellHeight));
     const wallTop = Math.max(0, horizon - Math.floor(wallHeight / 2));
     const wallBottom = Math.min(ROWS - 1, horizon + Math.floor(wallHeight / 2));
 
@@ -616,8 +763,11 @@ function render() {
       if (row < wallTop) {
         // Background already carries a time-of-day sky gradient.
       } else if (row <= wallBottom) {
-        chGrid[row][col] = wallChar;
-        colGrid[row][col] = wallColor;
+        const wallT=(row-wallTop)/Math.max(1,wallBottom-wallTop);
+        if(meta&&meta.roof&&wallT<.24){chGrid[row][col]=side===0?"/":"\\";colGrid[row][col]=darken(meta.roof,shade/WALL_SHADES.length*.55+(1-daylight)*.25)}
+        else if(meta&&meta.feature==="D"&&wallT>.35){chGrid[row][col]=wallT<.46?"_":"|";colGrid[row][col]=darken("#593b28",shade/WALL_SHADES.length*.45)}
+        else if(meta&&meta.feature==="W"&&wallT>.32&&wallT<.68){chGrid[row][col]=(Math.floor(sceneTime*1.5+mapX+mapY)%5===0)?"*":"o";colGrid[row][col]=darken("#8fc6d6",(1-daylight)*.35)}
+        else{chGrid[row][col]=wallChar;colGrid[row][col]=wallColor}
       } else {
         const floorDepth = row - horizon;
         const fi = Math.min(FLOOR_CHARS.length - 1, Math.floor(floorDepth / 5));
