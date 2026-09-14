@@ -31,6 +31,8 @@ same systems must later support urban worlds without replacing the engine.
 - Semantic building cells with height, roof, door, window, material, race,
   structure identity, and settlement identity. The renderer uses these fields
   for non-block facades and pitched silhouettes.
+- Shallow-water sandbox with per-cell depth, seeded elevation, springs, flow
+  toward lower open cells, and editor controls for water sources and raised land.
 
 ## Settlement catalog
 
@@ -80,6 +82,7 @@ same systems must later support urban worlds without replacing the engine.
 ### Phase E — engine scale and urban mode
 
 - Deterministic chunk streaming and edit deltas
+- Erosion/sediment, irrigation, dams, watermills, flooding and water-aware lots
 - Elevation, stacked sectors, roof traversal and progressive voxel meshing
 - Replace medieval catalogs with urban roads, zoning, utilities, buildings,
   traffic and civic-service templates while retaining shared simulation APIs
@@ -90,3 +93,15 @@ same systems must later support urban worlds without replacing the engine.
 - Save seed plus changed deltas instead of whole untouched chunks.
 - Run settlement days at low frequency and render only the active area.
 - Keep all initial features dependency-free and mobile-safe.
+
+## External implementation references
+
+- [`anopara/country-slice`](https://github.com/anopara/country-slice) is an
+  MIT-licensed Rust/Bevy/OpenGL project with mesh brushes and a procedural-wall
+  reference. It cannot be directly embedded in this browser-only engine, but
+  its brush/segment approach is a useful reference for LokRealm's future wall,
+  gate, road, and building editor tools. Any direct ported code or assets must
+  retain the MIT copyright notice.
+- [`wkwan/flo`](https://github.com/wkwan/flo) is Rust/Vulkan and explicitly
+  does not target the web. Its fluid example informs the simulation direction,
+  but LokRealm uses its own lightweight shallow-water implementation.
