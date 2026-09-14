@@ -125,6 +125,10 @@ at the repo root is served as-is, no build command needed.
 
 - Deterministic 48x48 seeded generation with connected roads, wilderness,
   village prefabs, and the preserved Whisper Maze landmark.
+- Layered terrain rendering: seeded grassland, forest floor, meadows, dirt,
+  water, and roads use their own floor glyphs/colors; sky and world shading
+  respond to the simulated day/night clock. Flora has pines, oaks, birches,
+  autumn trees, bushes, rocks, flowers, reeds, scale variation, and light wind.
 - Separate ground and collision layers, local saves, and portable world export.
 - Four named NPCs with roles, scheduled wandering, dialogue, quests, and trade.
 - Axe/tree harvesting, inventory, minimap, main/pause UI, and a paint editor.
