@@ -23,6 +23,14 @@ cells retain structure ownership, height, roof, door/window, material, race,
 condition, and settlement identity, which the renderer turns into varied
 facades and silhouettes.
 
+## Water sandbox
+
+LokRealm has a lightweight shallow-water layer: each open grid cell stores
+water depth and shares it with lower neighboring terrain at a capped rate. The
+world seeds ponds and springs, while the editor can place a **Water Spring** or
+**Raise Land** to shape flow. It is browser-native and designed for streams,
+ponds, irrigation, flooding, and later erosion—not a full GPU fluid solver.
+
 ## Run it
 
 Just open `index.html` in a browser. No install, no server required
@@ -36,6 +44,7 @@ mouse look to behave consistently across browsers).
 - Click the screen, then move the mouse — free look (pointer lock)
 - `F` / Space — talk, inspect, or use the equipped axe
 - `I` — inventory; `M` — minimap; `J` — settlements; `Tab` — world editor; `P` — pause
+- The always-visible **Pause/Resume** button pauses both the game and water simulation.
 - **Touch** (phones/tablets): dual joysticks, both dynamic — a stick
   pops up right where you touch down rather than sitting fixed in a
   corner. Left half of the screen moves, right half looks (holding it
