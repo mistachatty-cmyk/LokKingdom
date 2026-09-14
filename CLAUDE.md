@@ -132,6 +132,10 @@ at the repo root is served as-is, no build command needed.
 - Separate ground and collision layers, local saves, and portable world export.
 - Four named NPCs with roles, scheduled wandering, dialogue, quests, and trade.
 - Axe/tree harvesting, inventory, minimap, main/pause UI, and a paint editor.
+- Neutral player **Freehold** construction: harvest wood, claim clear dry
+  land, then place persisted cottages, palisade segments and roads. The
+  structure records use `chunkKey:"0,0"` already so construction data has a
+  migration path when chunk streaming lands. PACK opens the builder on touch.
 - `BUILDING_BLUEPRINTS`, `STRUCTURES`, `HEIGHTS`, and `CELL_META` are the
   semantic architecture layer. Human and Diligy buildings retain roof,
   facade-feature, race, settlement, condition, and variable-height data.
@@ -162,6 +166,9 @@ at the repo root is served as-is, no build command needed.
    preemptively — only if profiling shows it's needed)
 9. ~~Mobile touch controls (virtual joystick + drag-to-look)~~ — done
 10. Sound via WebAudio, kept inline (no external audio files)
+
+See `docs/WORLD_SCALE_PLAN.md` before changing generation or persistence: the
+48×48 map is explicitly the starter chunk, not the intended world limit.
 
 When picking up work here, default to the next unchecked roadmap item
 unless told otherwise.
