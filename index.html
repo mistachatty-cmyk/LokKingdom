@@ -96,6 +96,8 @@
   #invert-gyro-btn{ top:52px; }
   #pause-btn{position:fixed;top:10px;right:12px;z-index:45;font:11px monospace;background:rgba(14,24,18,.88)}
   #settings-btn{position:fixed;top:10px;right:94px;z-index:45;font:12px monospace;background:rgba(14,24,18,.88)}
+  #map-btn,#pack-btn,#realm-btn{position:fixed;top:10px;z-index:45;font:11px monospace;background:rgba(14,24,18,.88)}
+  #map-btn{left:10px}#pack-btn{left:62px}#realm-btn{left:122px}
   button{font:inherit;color:#e8d7a2;background:#182018;border:1px solid #71865a;border-radius:4px;padding:7px 10px}
   button:hover,button:focus{background:#293829;outline:1px solid #c8a85b}
   .panel{position:fixed;z-index:30;color:#e8d7a2;background:rgba(7,10,8,.94);border:1px solid #71865a;
@@ -122,7 +124,7 @@
   .stat-grid b{display:block;color:#e9d7a5}.race-tag{float:right;color:#83d795}
   #crosshair{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);color:#ffffff88;font:15px monospace;pointer-events:none}
   #action-btn{position:fixed;right:20px;bottom:132px;width:62px;height:62px;border-radius:50%;display:none;z-index:20}
-  @media(pointer:coarse){#action-btn{display:block}.panel{font-size:11px}#inventory{top:92px}#pause-btn{left:145px;right:auto}#settings-btn{left:238px;right:auto}}
+  @media(pointer:coarse){#action-btn{display:block}.panel{font-size:11px}#inventory{top:92px}#hud{top:46px}#pause-btn{left:194px;right:auto}#settings-btn{left:287px;right:auto}}
 </style>
 </head>
 <body>
@@ -135,6 +137,9 @@
 <div id="look-joystick-base" class="touch-ui"><div id="look-joystick-nub"></div></div>
 <button id="gyro-btn" class="touch-ui">Enable Gyro Look</button>
 <button id="invert-gyro-btn" class="touch-ui">Invert Gyro: On</button>
+<button id="map-btn" class="touch-ui" aria-label="Toggle minimap">MAP</button>
+<button id="pack-btn" class="touch-ui" aria-label="Toggle inventory">PACK</button>
+<button id="realm-btn" class="touch-ui" aria-label="Open settlement ledger">REALM</button>
 <button id="pause-btn" aria-label="Pause game">▶ RESUME</button>
 <button id="settings-btn" aria-label="Open settings">⚙</button>
 <div id="crosshair">+</div>
@@ -445,7 +450,7 @@ function onTouchStart(e) {
   releaseStaleTouches(e);
   debugTouchStarts++;
   for (const t of e.changedTouches) {
-    if (t.target.closest("#gyro-btn, #invert-gyro-btn, #pause-btn, #settings-btn, .panel")) continue;
+    if (t.target.closest("#gyro-btn, #invert-gyro-btn, #map-btn, #pack-btn, #realm-btn, #pause-btn, #settings-btn, .panel")) continue;
     if (t.clientX < window.innerWidth / 2) {
       if (joystickTouchId !== null) continue;
       joystickTouchId = t.identifier;
@@ -565,6 +570,9 @@ function openSettings(fromMenu=false){
 function togglePause(){paused=!paused;closeOverlays();$("main-menu").classList.toggle("hidden",!paused);syncPauseButton();if(!paused)showToast("Realm resumed")}
 $('pause-btn').onclick=e=>{e.stopPropagation();togglePause()};
 $('settings-btn').onclick=e=>{e.stopPropagation();openSettings(!$('main-menu').classList.contains('hidden'))};
+$('map-btn').onclick=e=>{e.stopPropagation();togglePanel('map-panel',true)};
+$('pack-btn').onclick=e=>{e.stopPropagation();togglePanel('inventory')};
+$('realm-btn').onclick=e=>{e.stopPropagation();openSettlementLedger()};
 $('cinematic-toggle').onclick=()=>{cinematicSurfaces=!cinematicSurfaces;localStorage.setItem("lokrealm-cinematic-surfaces",cinematicSurfaces?"on":"off");syncCinematicControl();showToast(cinematicSurfaces?"Cinematic Surfaces enabled":"Classic Surface mode enabled")};
 $('settings-close').onclick=()=>{const returnToMenu=settingsReturnToMenu;$('settings-panel').classList.add('hidden');if(returnToMenu)$('main-menu').classList.remove('hidden');else{paused=false;syncPauseButton();showToast('Realm resumed')}};
 document.querySelectorAll("[data-menu]").forEach(btn=>btn.onclick=()=>{
