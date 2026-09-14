@@ -94,6 +94,7 @@
   }
   #gyro-btn{ top:16px; }
   #invert-gyro-btn{ top:52px; }
+  #pause-btn{position:fixed;top:10px;right:12px;z-index:45;font:11px monospace;background:rgba(14,24,18,.88)}
   button{font:inherit;color:#e8d7a2;background:#182018;border:1px solid #71865a;border-radius:4px;padding:7px 10px}
   button:hover,button:focus{background:#293829;outline:1px solid #c8a85b}
   .panel{position:fixed;z-index:30;color:#e8d7a2;background:rgba(7,10,8,.94);border:1px solid #71865a;
@@ -116,7 +117,7 @@
   .stat-grid b{display:block;color:#e9d7a5}.race-tag{float:right;color:#83d795}
   #crosshair{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);color:#ffffff88;font:15px monospace;pointer-events:none}
   #action-btn{position:fixed;right:20px;bottom:132px;width:62px;height:62px;border-radius:50%;display:none;z-index:20}
-  @media(pointer:coarse){#action-btn{display:block}.panel{font-size:11px}#inventory{top:92px}}
+  @media(pointer:coarse){#action-btn{display:block}.panel{font-size:11px}#inventory{top:92px}#pause-btn{left:145px;right:auto}}
 </style>
 </head>
 <body>
@@ -129,6 +130,7 @@
 <div id="look-joystick-base" class="touch-ui"><div id="look-joystick-nub"></div></div>
 <button id="gyro-btn" class="touch-ui">Enable Gyro Look</button>
 <button id="invert-gyro-btn" class="touch-ui">Invert Gyro: On</button>
+<button id="pause-btn" aria-label="Pause game">▶ RESUME</button>
 <div id="crosshair">+</div>
 <button id="action-btn" class="touch-ui">USE</button>
 <div id="toast" class="hidden"></div>
@@ -183,7 +185,8 @@ const GYRO_YAW_RANGE = Math.PI / 2, GYRO_PITCH_RANGE = 8, GYRO_TILT_RANGE_DEG = 
 // Data stays inline but is cleanly separated from rendering. The generator uses
 // deterministic roads + prefabs, so a seed can be shared now and chunked later.
 const MAPW = 48, MAPH = 48;
-let MAP = [], GROUND = [], HEIGHTS = [], CELL_META = [], SPRITES = [], NPCS = [];
+let MAP = [], GROUND = [], BASE_GROUND = [], ELEVATION = [], WATER = [], WATER_SOURCES = [], HEIGHTS = [], CELL_META = [], SPRITES = [], NPCS = [];
+let waterAccumulator = 0, waterEnabled = true;
 let STRUCTURES = [], SETTLEMENTS = [], PEOPLE = [], FACTIONS = [], simulationDay = 1;
 let worldSeed = Number(localStorage.getItem("lokrealm-seed")) || 616;
 let rngState = worldSeed >>> 0;
@@ -316,7 +319,13 @@ function generateWorld(seed=worldSeed){
   addNpc(DILIGY_ARCHETYPES[0],39,10,39,10,"diligy","verdanthold");
   addNpc(DILIGY_ARCHETYPES[1],35,13,35,13,"diligy","verdanthold");
   addNpc(DILIGY_ARCHETYPES[2],43,13,43,13,"diligy","verdanthold");
-  const saved=localStorage.getItem("lokrealm-world-"+worldSeed);if(saved)try{const d=JSON.parse(saved);if(d.map)MAP=d.map;if(d.ground)GROUND=d.ground;if(d.heights)HEIGHTS=d.heights;if(d.cellMeta)CELL_META=d.cellMeta;if(d.settlements)SETTLEMENTS=d.settlements;if(d.factions)FACTIONS=d.factions;if(d.simulationDay)simulationDay=d.simulationDay;if(d.wood)inventory.wood=d.wood}catch(e){}
+  // A shallow-water layer sits above terrain. It is intentionally small and
+  // deterministic: a browser-friendly sandbox now, with room for erosion later.
+  ELEVATION=Array.from({length:MAPH},(_,y)=>Array.from({length:MAPW},(_,x)=>.08+hashNoise(Math.floor(x/4),Math.floor(y/4))*.68+hashNoise(x+47,y+19)*.11));
+  BASE_GROUND=GROUND.map(row=>row.slice());
+  WATER=Array.from({length:MAPH},(_,y)=>Array.from({length:MAPW},(_,x)=>BASE_GROUND[y][x]==="w"?.46:0));
+  WATER_SOURCES=Array.from({length:MAPH},(_,y)=>Array.from({length:MAPW},(_,x)=>BASE_GROUND[y][x]==="w"&&hashNoise(x+131,y+71)>.58));
+  const saved=localStorage.getItem("lokrealm-world-"+worldSeed);if(saved)try{const d=JSON.parse(saved);if(d.map)MAP=d.map;if(d.ground)GROUND=d.ground;if(d.baseGround)BASE_GROUND=d.baseGround;if(d.elevation)ELEVATION=d.elevation;if(d.water)WATER=d.water;if(d.waterSources)WATER_SOURCES=d.waterSources;if(d.heights)HEIGHTS=d.heights;if(d.cellMeta)CELL_META=d.cellMeta;if(d.settlements)SETTLEMENTS=d.settlements;if(d.factions)FACTIONS=d.factions;if(d.simulationDay)simulationDay=d.simulationDay;if(d.wood)inventory.wood=d.wood}catch(e){}
   player.x=24.5;player.y=25.5;player.angle=-Math.PI/2;refreshUI();renderSettlementLedger();
 }
 function tileAt(x,y){const xi=Math.floor(x),yi=Math.floor(y);if(xi<0||yi<0||xi>=MAPW||yi>=MAPH)return 1;return Number(MAP[yi][xi])||0}
@@ -422,7 +431,7 @@ function onTouchStart(e) {
   releaseStaleTouches(e);
   debugTouchStarts++;
   for (const t of e.changedTouches) {
-    if (t.target.closest("#gyro-btn, #invert-gyro-btn")) continue;
+    if (t.target.closest("#gyro-btn, #invert-gyro-btn, #pause-btn")) continue;
     if (t.clientX < window.innerWidth / 2) {
       if (joystickTouchId !== null) continue;
       joystickTouchId = t.identifier;
@@ -529,12 +538,14 @@ function refreshUI(){$("wood-count").textContent=inventory.wood;$('coin-count').
 function showToast(message){const el=$("toast");el.textContent=message;el.classList.remove("hidden");clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.add("hidden"),1800)}
 function togglePanel(id,redraw=false){$(id).classList.toggle("hidden");if(redraw&&!$(id).classList.contains("hidden"))drawMap()}
 function closeOverlays(){["dialogue","inventory","editor","settlements-panel"].forEach(id=>$(id).classList.add("hidden"))}
-function togglePause(){paused=!paused;closeOverlays();$("main-menu").classList.toggle("hidden",!paused);if(!paused)showToast("Realm resumed")}
+function syncPauseButton(){const b=$("pause-btn");if(b)b.textContent=paused?"▶ RESUME":"Ⅱ PAUSE"}
+function togglePause(){paused=!paused;closeOverlays();$("main-menu").classList.toggle("hidden",!paused);syncPauseButton();if(!paused)showToast("Realm resumed")}
+$('pause-btn').onclick=e=>{e.stopPropagation();togglePause()};
 document.querySelectorAll("[data-menu]").forEach(btn=>btn.onclick=()=>{
   const action=btn.dataset.menu;
   if(action==="new")generateWorld((Math.random()*2147483647)|0);
   if(action==="settings"){showToast("Gyro controls are at top-right · M map · Tab editor");return}
-  paused=false;$("main-menu").classList.add("hidden");showToast("Seed "+worldSeed+" · follow the road to the village");
+  paused=false;$("main-menu").classList.add("hidden");syncPauseButton();showToast("Seed "+worldSeed+" · follow the road to the village");
 });
 function nearestSprite(max=1.65){let best=null,bd=max;for(const s of SPRITES){const d=Math.hypot(s.x-player.x,s.y-player.y);if(d<bd){best=s;bd=d}}return best}
 function interact(){
@@ -553,14 +564,14 @@ function interact(){
 }
 $("action-btn").onclick=e=>{e.stopPropagation();interact()};
 function openDialogue(npc){
-  paused=true;const box=$("dialogue");box.classList.remove("hidden");box.querySelector(".name").textContent=npc.name+" · "+npc.role;
+  paused=true;syncPauseButton();const box=$("dialogue");box.classList.remove("hidden");box.querySelector(".name").textContent=npc.name+" · "+npc.role;
   box.querySelector(".text").textContent=npc.lines[Math.floor(worldMinutes/180)%npc.lines.length];
   const choices=box.querySelector(".choices");choices.innerHTML="";
   [["Ask about work",()=>{box.querySelector(".text").textContent=npc.quest}],
    [npc.race==="diligy"?"Offer 5 wood":"Trade 5 wood",()=>{if(inventory.wood>=5){inventory.wood-=5;inventory.coin+=8;const home=SETTLEMENTS.find(s=>s.id===npc.settlementId);if(home&&home.race==="diligy"){home.resources.livingWood+=5;home.growth+=8;renderSettlementLedger()}refreshUI();showToast(npc.race==="diligy"?"The grove welcomes the timber · +8 coin":"Trade complete · +8 coin")}else showToast("You need 5 wood")}],
-   ["Goodbye",()=>{box.classList.add("hidden");paused=false}]].forEach(([label,fn])=>{const b=document.createElement("button");b.textContent=label;b.onclick=fn;choices.appendChild(b)});
+   ["Goodbye",()=>{box.classList.add("hidden");paused=false;syncPauseButton()}]].forEach(([label,fn])=>{const b=document.createElement("button");b.textContent=label;b.onclick=fn;choices.appendChild(b)});
 }
-function saveWorld(silent=false){localStorage.setItem("lokrealm-world-"+worldSeed,JSON.stringify({version:2,seed:worldSeed,map:MAP,ground:GROUND,heights:HEIGHTS,cellMeta:CELL_META,settlements:SETTLEMENTS,factions:FACTIONS,simulationDay,wood:inventory.wood}));if(!silent)showToast("Realm saved locally")}
+function saveWorld(silent=false){localStorage.setItem("lokrealm-world-"+worldSeed,JSON.stringify({version:3,seed:worldSeed,map:MAP,ground:GROUND,baseGround:BASE_GROUND,elevation:ELEVATION,water:WATER,waterSources:WATER_SOURCES,heights:HEIGHTS,cellMeta:CELL_META,settlements:SETTLEMENTS,factions:FACTIONS,simulationDay,wood:inventory.wood}));if(!silent)showToast("Realm saved locally")}
 function drawMap(){
   const lines=[];for(let y=0;y<MAPH;y+=2){let row="";for(let x=0;x<MAPW;x++){
     if(Math.floor(player.x)===x&&Math.floor(player.y/2)===Math.floor(y/2)){row+="@";continue}
@@ -569,13 +580,13 @@ function drawMap(){
     const tree=SPRITES.some(s=>["tree","pine","oak","birch","autumn"].includes(s.type)&&Math.floor(s.x)===x&&Math.floor(s.y/2)===Math.floor(y/2));
     row+=settlement?(settlement.race==="human"?"H":"D"):npc?(npc.race==="diligy"?"d":"n"):MAP[y][x]?"#":GROUND[y][x]==="r"?"=":GROUND[y][x]==="w"?"~":tree?"^":".";
   }lines.push(row)}$("map-panel").textContent=lines.join("\n")+"\n\n@ You · H Human settlement · D Diligy grove"}
-function openEditor(){paused=true;$("editor").classList.remove("hidden");$("map-panel").classList.remove("hidden");drawMap()}
-const toolDefs=[[0,"Erase"],[1,"Hedge"],[2,"Timber"],[3,"Stone"],[4,"Keep"],[5,"Fence"],["r","Road"],["tree","Tree"]];
+function openEditor(){paused=true;syncPauseButton();$("editor").classList.remove("hidden");$("map-panel").classList.remove("hidden");drawMap()}
+const toolDefs=[[0,"Erase"],[1,"Hedge"],[2,"Timber"],[3,"Stone"],[4,"Keep"],[5,"Fence"],["r","Road"],["tree","Tree"],["spring","Water Spring"],["raise","Raise Land"]];
 toolDefs.forEach(([v,label])=>{const b=document.createElement("button");b.textContent=label;b.onclick=()=>{editorTool=v;document.querySelectorAll("#editor-tools button").forEach(x=>x.classList.remove("active"));b.classList.add("active")};$("editor-tools").appendChild(b)});
 $("editor-tools").children[2].classList.add("active");
-$("map-panel").onclick=e=>{if($("editor").classList.contains("hidden"))return;const r=e.currentTarget.getBoundingClientRect(),x=Math.floor((e.clientX-r.left)/r.width*MAPW),y=Math.floor((e.clientY-r.top)/r.height*MAPH);if(editorTool==="r"){MAP[y][x]=0;GROUND[y][x]="r"}else if(editorTool==="tree"){MAP[y][x]=0;SPRITES.push({x:x+.5,y:y+.5,type:"tree",solid:true,hp:3})}else MAP[y][x]=Number(editorTool);drawMap()};
-$("editor-save").onclick=()=>saveWorld();$("editor-close").onclick=()=>{$("editor").classList.add("hidden");paused=false};
-$("editor-export").onclick=()=>{const blob=new Blob([JSON.stringify({format:"LokRealmWorld/2",seed:worldSeed,map:MAP,ground:GROUND,heights:HEIGHTS,cellMeta:CELL_META,structures:STRUCTURES,settlements:SETTLEMENTS,factions:FACTIONS,simulationDay,prefabs:Object.keys(PREFABS),buildingBlueprints:Object.keys(BUILDING_BLUEPRINTS)},null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="lokrealm-"+worldSeed+".json";a.click();URL.revokeObjectURL(a.href)};
+$("map-panel").onclick=e=>{if($("editor").classList.contains("hidden"))return;const r=e.currentTarget.getBoundingClientRect(),x=Math.floor((e.clientX-r.left)/r.width*MAPW),y=Math.floor((e.clientY-r.top)/r.height*MAPH);if(editorTool==="r"){MAP[y][x]=0;GROUND[y][x]="r";BASE_GROUND[y][x]="r"}else if(editorTool==="tree"){MAP[y][x]=0;SPRITES.push({x:x+.5,y:y+.5,type:"tree",solid:true,hp:3})}else if(editorTool==="spring"){MAP[y][x]=0;BASE_GROUND[y][x]="g";GROUND[y][x]="w";WATER[y][x]=.8;WATER_SOURCES[y][x]=true}else if(editorTool==="raise"){ELEVATION[y][x]=Math.min(1.25,ELEVATION[y][x]+.18);if(WATER[y][x]>.1)WATER[y][x]=Math.max(0,WATER[y][x]-.08)}else MAP[y][x]=Number(editorTool);drawMap()};
+$("editor-save").onclick=()=>saveWorld();$("editor-close").onclick=()=>{$("editor").classList.add("hidden");paused=false;syncPauseButton()};
+$("editor-export").onclick=()=>{const blob=new Blob([JSON.stringify({format:"LokRealmWorld/3",seed:worldSeed,map:MAP,ground:GROUND,baseGround:BASE_GROUND,elevation:ELEVATION,water:WATER,waterSources:WATER_SOURCES,heights:HEIGHTS,cellMeta:CELL_META,structures:STRUCTURES,settlements:SETTLEMENTS,factions:FACTIONS,simulationDay,prefabs:Object.keys(PREFABS),buildingBlueprints:Object.keys(BUILDING_BLUEPRINTS)},null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="lokrealm-"+worldSeed+".json";a.click();URL.revokeObjectURL(a.href)};
 
 // ---------------- SETTLEMENT / POPULATION SIMULATION ----------------
 function settlementPopulation(s){return s.race==="human"?s.adults+s.children:s.mature+s.seedlings}
@@ -639,13 +650,36 @@ function renderSettlementLedger(){
     return `<article class="settlement-card ${s.race}"><span class="race-tag">${cfg.name}</span><h3>${s.name} · ${stage}</h3><div>${kind} · ${pop} residents</div><small>${people}</small>${meter(s.growth,cfg.color)}<small>Next growth cycle ${Math.floor(s.growth)}%</small><div class="stat-grid">${resources}</div><p>${need}</p><small>${s.history[0]||"Its story is beginning."}</small></article>`
   }).join("")
 }
-function openSettlementLedger(){paused=true;renderSettlementLedger();$('settlements-panel').classList.remove('hidden')}
-$('advance-day').onclick=simulateSettlementDay;$('settlements-close').onclick=()=>{$('settlements-panel').classList.add('hidden');paused=false};
+function openSettlementLedger(){paused=true;syncPauseButton();renderSettlementLedger();$('settlements-panel').classList.remove('hidden')}
+$('advance-day').onclick=simulateSettlementDay;$('settlements-close').onclick=()=>{$('settlements-panel').classList.add('hidden');paused=false;syncPauseButton()};
 
 function updateNpcs(dt){
   const previousMinutes=worldMinutes;worldMinutes=(worldMinutes+dt*2)%1440;if(worldMinutes<previousMinutes)simulateSettlementDay();
   for(const n of NPCS){n.phase-=dt;if(n.phase<=0){n.phase=3+rand()*5;const night=worldMinutes<360||worldMinutes>1200;n.targetX=night?n.homeX:n.homeX+(rand()*8-4);n.targetY=night?n.homeY:n.homeY+(rand()*8-4)}
     const dx=n.targetX-n.x,dy=n.targetY-n.y,d=Math.hypot(dx,dy);if(d>.15){const nx=n.x+dx/d*dt*.42,ny=n.y+dy/d*dt*.42;if(tileAt(nx,ny)===0){n.x=nx;n.y=ny}else n.phase=0}}
+}
+
+// Water moves as a shallow height field: each open cell shares water with
+// lower neighboring cells. This is intentionally a stable, capped simulation
+// for a 48×48 mobile world—not a GPU fluid solver like Flo's Vulkan example.
+function simulateWater(dt){
+  if(!waterEnabled)return;waterAccumulator+=dt;const step=.12;
+  while(waterAccumulator>=step){waterAccumulator-=step;const delta=Array.from({length:MAPH},()=>Array(MAPW).fill(0));
+    for(let y=1;y<MAPH-1;y++)for(let x=1;x<MAPW-1;x++){
+      const amount=WATER[y][x]||0;if(amount<.004||tileAt(x+.5,y+.5)>0)continue;
+      if(WATER_SOURCES[y][x])delta[y][x]+=.026;
+      const surface=ELEVATION[y][x]+amount;
+      for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+        const nx=x+dx,ny=y+dy;if(tileAt(nx+.5,ny+.5)>0)continue;
+        const drop=surface-(ELEVATION[ny][nx]+(WATER[ny][nx]||0));if(drop<=.025)continue;
+        const flow=Math.min(amount*.22,drop*.18);delta[y][x]-=flow;delta[ny][nx]+=flow;
+      }
+    }
+    for(let y=1;y<MAPH-1;y++)for(let x=1;x<MAPW-1;x++){
+      WATER[y][x]=Math.max(0,Math.min(.95,(WATER[y][x]||0)+delta[y][x]));
+      if(WATER[y][x]>.055)GROUND[y][x]="w";else GROUND[y][x]=BASE_GROUND[y][x];
+    }
+  }
 }
 
 function tryMove(nx, ny) {
@@ -656,6 +690,7 @@ function tryMove(nx, ny) {
 
 function update(dt) {
   if(paused)return;
+  simulateWater(dt);
   updateNpcs(dt);
   let moveX = 0, moveY = 0;
   const fwdX = Math.cos(player.angle), fwdY = Math.sin(player.angle);
