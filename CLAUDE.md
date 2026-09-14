@@ -132,6 +132,16 @@ at the repo root is served as-is, no build command needed.
 - Separate ground and collision layers, local saves, and portable world export.
 - Four named NPCs with roles, scheduled wandering, dialogue, quests, and trade.
 - Axe/tree harvesting, inventory, minimap, main/pause UI, and a paint editor.
+- `BUILDING_BLUEPRINTS`, `STRUCTURES`, `HEIGHTS`, and `CELL_META` are the
+  semantic architecture layer. Human and Diligy buildings retain roof,
+  facade-feature, race, settlement, condition, and variable-height data.
+- `SETTLEMENTS`, `RACES`, `SETTLEMENT_KINDS`, `PEOPLE`, and `FACTIONS` are the
+  simulation layer. Hearthmere models human households, children, maturation,
+  migration, production, housing, care, and safety. Verdanthold models Diligy
+  cooperative growth through helpers, seedlings, sunlight, water, nutrients,
+  nursery capacity, and root links. Inspect/advance it with the `J` ledger.
+- Each race has six population stages. Stage changes can construct semantic
+  buildings; weekly exchange develops the initial Human–Diligy relationship.
 
 ## Roadmap (priority order)
 
