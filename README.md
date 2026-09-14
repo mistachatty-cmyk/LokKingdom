@@ -9,6 +9,20 @@ static host.
 Inspired by the "walkable ASCII city in one HTML file" trend — built
 from scratch as a small, expandable foundation rather than a tech demo.
 
+## Living settlements
+
+The world contains two simulated cultures. Human settlement Hearthmere grows
+through supported households, housing, food, water, care, work, immigration,
+and maturation. The chlorophyll-rich Diligy of Verdanthold grow cooperatively
+through light, water, nutrients, root links, helpers, seedlings, and a Grove
+Heart. Both advance through six stages, unlock structures, record history, and
+develop relations through trade.
+
+Buildings are semantic blueprints rather than anonymous rectangles. Their
+cells retain structure ownership, height, roof, door/window, material, race,
+condition, and settlement identity, which the renderer turns into varied
+facades and silhouettes.
+
 ## Run it
 
 Just open `index.html` in a browser. No install, no server required
@@ -21,7 +35,7 @@ mouse look to behave consistently across browsers).
 - `Q` / `E` — turn
 - Click the screen, then move the mouse — free look (pointer lock)
 - `F` / Space — talk, inspect, or use the equipped axe
-- `I` — inventory; `M` — minimap; `Tab` — world editor; `P` — pause
+- `I` — inventory; `M` — minimap; `J` — settlements; `Tab` — world editor; `P` — pause
 - **Touch** (phones/tablets): dual joysticks, both dynamic — a stick
   pops up right where you touch down rather than sitting fixed in a
   corner. Left half of the screen moves, right half looks (holding it
