@@ -23,6 +23,21 @@ cells retain structure ownership, height, roof, door/window, material, race,
 condition, and settlement identity, which the renderer turns into varied
 facades and silhouettes.
 
+## Build a freehold
+
+Harvest trees for wood, open **PACK**, then choose **Build realm**. Claim one
+clear, dry tile with a Claim Post (4 wood), then place freehold cottages
+(8 wood), palisade sections (2 wood), and roads (1 wood). These player-made
+changes persist with the seed and are exported with the world. The initial
+freehold is deliberately neutral—there is no forced player character identity
+yet—so it can later become a village, fort, kingdom, or a different urban
+world role.
+
+The current map is starting region `0,0`, not a final boundary. See
+[`docs/WORLD_SCALE_PLAN.md`](docs/WORLD_SCALE_PLAN.md) for the deterministic
+chunk-and-delta path toward an effectively unlimited world without loading it
+all at once.
+
 ## Water sandbox
 
 LokRealm has a lightweight shallow-water layer: each open grid cell stores
@@ -45,6 +60,8 @@ mouse look to behave consistently across browsers).
 - `F` / Space — talk, inspect, or use the equipped axe
 - `I` — inventory; `M` — minimap; `J` — settlements; `Tab` — world editor; `P` — pause
 - The always-visible **Pause/Resume** button pauses both the game and water simulation.
+- **Touch**: MAP, PACK, and REALM quick buttons expose the same systems. Open
+  PACK, then **Build realm** to use the construction palette.
 - **Touch** (phones/tablets): dual joysticks, both dynamic — a stick
   pops up right where you touch down rather than sitting fixed in a
   corner. Left half of the screen moves, right half looks (holding it
@@ -87,16 +104,14 @@ dependencies, easy to paste into any host or game-template system.
 
 ## Roadmap / how to expand this
 
-Roughly in order of effort:
+The current priority order is:
 
-- [ ] Load `MAP` from a JSON/data file instead of a hardcoded string,
-      so levels ("kingdoms"/regions) can be authored separately
-- [ ] Variable wall heights read per-tile (not just per-material)
-- [ ] More sprite types + simple animation frames (e.g. idle bob)
-- [ ] Basic interaction: walk into a sprite to trigger a message/pickup
-- [ ] Minimap overlay (toggle key) using the same `MAP` data
-- [ ] Simple enemy/NPC movement (wander or chase within the grid)
-- [ ] Multiple maps / level transitions (kingdom regions)
+- [ ] Deterministic chunk streaming: seed + chunk coordinates + saved edit deltas
+- [x] Player freehold: claim, cottage, palisade, roads, wood costs, persistence
+- [ ] Construction queues, NPC jobs, housing, food, and maintenance
+- [ ] Rotatable prefab sockets, bridges, gates, road grades, forts, and castles
+- [ ] Multiple biomes, settlement catalogs, and an urban generation catalog
+- [ ] Sprite animation frames and a dedicated visual/model quality pass
 - [ ] Swap the `<pre>` renderer for `<canvas>` + `fillText` once color
       count / frame size makes DOM spans a bottleneck
 - [x] Mobile touch controls (virtual joystick + drag-to-look) + gyro look
