@@ -198,46 +198,145 @@ const SPRITES = [
   { x: 3.5, y: 2.5, type: "soldier" },
   { x: 22.5, y: 2.5, type: "soldier" },
 ];
-// Each glyph is a small stack of {ch, color} rows, near->far darkened the
-// same way walls/floor are. Kept to Unicode block chars + plain ASCII only
-// (no wide/exotic glyphs) so the monospace column grid never drifts.
-const SPRITE_GLYPHS = {
+// ---------------- SPRITE SILHOUETTES (procedural, not hand-drawn ASCII art) ----------------
+// A shape is a function that builds a [subRows][cols] grid of palette-key
+// strings (or null for "transparent, let whatever's behind show through").
+// Generating the silhouette from a few proportions — head/shoulder/waist/leg
+// fractions — instead of hand-typing ASCII-art rows means every type is
+// guaranteed symmetric and correctly proportioned at ANY size, and a new
+// type is a few numbers, not a redrawn sprite sheet. Same "build from
+// parameters" approach the sibling Lok games use for their character rigs.
+//
+// Resolution is doubled vertically for free: each *screen* row is actually
+// two silhouette sub-rows, packed into one character cell via a half-block
+// glyph (▀ with the cell's own foreground = top half, background = bottom
+// half) — see paintSpriteCell(). That's what makes a rounded head or a
+// tapered leg actually readable instead of a stair-stepped blob.
+function humanoidSilhouette(subRows, cols, opts) {
+  const {
+    headFrac = 0.22,          // fraction of total height that is the head
+    shoulderFrac = 0.6,       // torso ends / legs begin here
+    shoulderWidthFrac = 0.82, // torso width at the shoulders (of `cols`)
+    waistWidthFrac = 0.46,    // torso width at the waist
+    legGapFrac = 0.16,        // gap between the two legs (of `cols`)
+    hasHat = false,
+    hasPack = false,
+    hasSpear = false,
+  } = opts;
+  const grid = [];
+  const midCol = (cols - 1) / 2;
+  for (let r = 0; r < subRows; r++) {
+    const t = r / (subRows - 1); // 0 (top) .. 1 (bottom)
+    const row = new Array(cols).fill(null);
+    if (t < headFrac) {
+      const headT = t / headFrac;
+      const radius = Math.sin(headT * Math.PI) * (cols * 0.24) + 0.55;
+      for (let c = 0; c < cols; c++) if (Math.abs(c - midCol) <= radius) row[c] = "head";
+      if (hasHat && headT < 0.4) {
+        for (let c = 0; c < cols; c++) if (Math.abs(c - midCol) <= radius + 1) row[c] = "hat";
+      }
+    } else if (t < shoulderFrac) {
+      const bodyT = (t - headFrac) / (shoulderFrac - headFrac);
+      const width = ((shoulderWidthFrac - (shoulderWidthFrac - waistWidthFrac) * bodyT) * cols) / 2;
+      for (let c = 0; c < cols; c++) if (Math.abs(c - midCol) <= width) row[c] = "body";
+      if (hasPack && bodyT > 0.15 && bodyT < 0.75) {
+        const packCol = Math.round(midCol - width - 1);
+        if (packCol >= 0) row[packCol] = "pack";
+      }
+    } else {
+      const legT = (t - shoulderFrac) / (1 - shoulderFrac);
+      const gap = (cols * legGapFrac) / 2;
+      const legWidth = ((waistWidthFrac * cols) / 2 - gap) * (1 - legT * 0.15);
+      for (let c = 0; c < cols; c++) {
+        const d = c - midCol;
+        if (d < 0 && Math.abs(d + gap) <= legWidth) row[c] = "legs";
+        if (d >= 0 && Math.abs(d - gap) <= legWidth) row[c] = "legs";
+      }
+    }
+    if (hasSpear && t < 0.85) row[cols - 1] = "spear";
+    grid.push(row);
+  }
+  return grid;
+}
+
+function treeSilhouette(subRows, cols) {
+  const grid = [];
+  const midCol = (cols - 1) / 2;
+  const canopyEnd = 0.7;
+  for (let r = 0; r < subRows; r++) {
+    const t = r / (subRows - 1);
+    const row = new Array(cols).fill(null);
+    if (t < canopyEnd) {
+      const ct = t / canopyEnd;
+      const radius = Math.sin(ct * Math.PI) * (cols * 0.55) + 0.4; // full at mid-canopy, pointed at top
+      const shade = ct < 0.55 ? "canopyLight" : "canopyDark";
+      for (let c = 0; c < cols; c++) if (Math.abs(c - midCol) <= radius) row[c] = shade;
+    } else {
+      const trunkWidth = Math.max(0.6, cols * 0.12);
+      for (let c = 0; c < cols; c++) if (Math.abs(c - midCol) <= trunkWidth) row[c] = "trunk";
+    }
+    grid.push(row);
+  }
+  return grid;
+}
+
+const SPRITE_TYPES = {
   tree: {
-    rows: [
-      { ch: "▓", color: "#2e7d32" },
-      { ch: "█", color: "#388e3c" },
-      { ch: "|", color: "#6d4c2b" },
-    ],
+    silhouette: treeSilhouette,
+    palette: { canopyLight: "#4caf50", canopyDark: "#2e7d32", trunk: "#6d4c2b" },
   },
   villager: {
-    rows: [
-      { ch: "o", color: "#e0c9a0" },
-      { ch: "█", color: "#c9a15a" },
-      { ch: "|", color: "#8a6d3f" },
-    ],
+    silhouette: (subRows, cols) => humanoidSilhouette(subRows, cols, {}),
+    palette: { head: "#e0c9a0", body: "#c9a15a", legs: "#8a6d3f" },
   },
   mayor: {
-    rows: [
-      { ch: "o", color: "#f0dca0" },
-      { ch: "█", color: "#7b3fa0" },
-      { ch: "|", color: "#4a2a63" },
-    ],
+    silhouette: (subRows, cols) => humanoidSilhouette(subRows, cols, { hasHat: true }),
+    palette: { head: "#f0dca0", hat: "#c9a227", body: "#7b3fa0", legs: "#4a2a63" },
   },
   forester: {
-    rows: [
-      { ch: "o", color: "#d9c9a0" },
-      { ch: "█", color: "#4f7a3f" },
-      { ch: "|", color: "#3f5a2f" },
-    ],
+    silhouette: (subRows, cols) => humanoidSilhouette(subRows, cols, { hasPack: true }),
+    palette: { head: "#d9c9a0", body: "#4f7a3f", legs: "#3f5a2f", pack: "#3f2f1f" },
   },
   soldier: {
-    rows: [
-      { ch: "o", color: "#c9d0d6" },
-      { ch: "█", color: "#5a6570" },
-      { ch: "|", color: "#3a4249" },
-    ],
+    silhouette: (subRows, cols) => humanoidSilhouette(subRows, cols, { hasSpear: true, shoulderWidthFrac: 0.92 }),
+    palette: { head: "#c9d0d6", body: "#5a6570", legs: "#3a4249", spear: "#8a7a63" },
   },
 };
+
+// Packs two vertical "pixels" into one character cell: ▀ with the cell's own
+// foreground color as the top half and background color as the bottom half —
+// doubling effective vertical resolution for free versus one color per cell.
+// Falls back to ▄ (bottom only) or leaves the cell untouched (both empty, so
+// whatever the wall/floor pass already drew there keeps showing through).
+function paintSpriteCell(chGrid, colGrid, bgGrid, row, col, topColor, bottomColor) {
+  if (topColor && bottomColor) {
+    chGrid[row][col] = HALF_UPPER; colGrid[row][col] = topColor; bgGrid[row][col] = bottomColor;
+  } else if (topColor) {
+    chGrid[row][col] = HALF_UPPER; colGrid[row][col] = topColor; bgGrid[row][col] = DEFAULT_BG;
+  } else if (bottomColor) {
+    chGrid[row][col] = HALF_LOWER; colGrid[row][col] = bottomColor; bgGrid[row][col] = DEFAULT_BG;
+  }
+}
+
+function drawBillboardSprite(chGrid, colGrid, bgGrid, depthBuffer, spriteDef, col, halfW, size, baseRow, dist) {
+  const cols = halfW * 2 + 1;
+  const grid = spriteDef.silhouette(size * 2, cols);
+  const fade = Math.min(0.6, dist / 20);
+  for (let ri = 0; ri < size; ri++) {
+    const row = baseRow - size + ri;
+    if (row < 0 || row >= ROWS) continue;
+    const topRow = grid[ri * 2], bottomRow = grid[ri * 2 + 1];
+    for (let cc = col - halfW; cc <= col + halfW; cc++) {
+      if (cc < 0 || cc >= COLS) continue;
+      if (dist >= depthBuffer[cc]) continue;
+      const ci = cc - (col - halfW);
+      const topKey = topRow[ci], bottomKey = bottomRow[ci];
+      const topColor = topKey ? darken(spriteDef.palette[topKey], fade) : null;
+      const bottomColor = bottomKey ? darken(spriteDef.palette[bottomKey], fade) : null;
+      paintSpriteCell(chGrid, colGrid, bgGrid, row, cc, topColor, bottomColor);
+    }
+  }
+}
 
 // ---------------- CHARACTER PALETTES ----------------
 // Unicode block-shade characters (U+2588/2593/2592/2591) instead of ASCII
@@ -246,6 +345,8 @@ const SPRITE_GLYPHS = {
 // smooth near->far gradient instead of a row of punctuation marks.
 const WALL_SHADES = ["█", "▓", "▓", "▒", "▒", "░", "░", " "]; // near -> far
 const SKY_CHAR = " ";
+const DEFAULT_BG = "#05070a"; // matches the page's own CSS background
+const HALF_UPPER = "▀", HALF_LOWER = "▄"; // sub-character packing, see paintSpriteCell()
 
 // ---------------- FLOOR MATERIALS ----------------
 // Ground appearance is independent of wall collision (a tile is still just
@@ -279,6 +380,14 @@ function darken(hex, factor) {
   const g = Math.round(((n >> 8) & 255) * (1 - factor));
   const b = Math.round((n & 255) * (1 - factor));
   return `rgb(${r},${g},${b})`;
+}
+
+// Only emits background-color when it differs from the page's own default —
+// the vast majority of cells (walls/floor/sky) do, so this keeps the
+// per-frame HTML string from doubling in size for no visual reason.
+function spanFor(color, bg, text) {
+  const style = bg !== DEFAULT_BG ? `color:${color};background:${bg}` : `color:${color}`;
+  return `<span style="${style}">${text}</span>`;
 }
 
 // ---------------- PLAYER ----------------
@@ -527,9 +636,11 @@ function castRay(rayAngle) {
 function render() {
   const chGrid = new Array(ROWS);
   const colGrid = new Array(ROWS);
+  const bgGrid = new Array(ROWS);
   for (let r = 0; r < ROWS; r++) {
     chGrid[r] = new Array(COLS).fill(SKY_CHAR);
-    colGrid[r] = new Array(COLS).fill("#05070a");
+    colGrid[r] = new Array(COLS).fill(DEFAULT_BG);
+    bgGrid[r] = new Array(COLS).fill(DEFAULT_BG);
   }
   const depthBuffer = new Array(COLS).fill(Infinity);
   const horizon = Math.floor(ROWS / 2 + player.pitch);
@@ -598,41 +709,30 @@ function render() {
     if (col < 0 || col >= COLS) continue;
     if (dist >= depthBuffer[col]) continue; // occluded by a wall
 
-    const glyph = SPRITE_GLYPHS[spr.type] || SPRITE_GLYPHS.tree;
+    const spriteDef = SPRITE_TYPES[spr.type] || SPRITE_TYPES.tree;
     const size = Math.max(1, Math.floor(ROWS / (dist + 0.0001) * 0.5));
     const halfW = Math.max(1, Math.floor(size / 3));
     const baseRow = horizon + Math.floor(size / 2);
 
-    for (let ri = 0; ri < glyph.rows.length; ri++) {
-      const rowsPerGlyphLine = Math.max(1, Math.floor(size / glyph.rows.length));
-      for (let rr = 0; rr < rowsPerGlyphLine; rr++) {
-        const row = baseRow - size + ri * rowsPerGlyphLine + rr;
-        if (row < 0 || row >= ROWS) continue;
-        for (let cc = col - halfW; cc <= col + halfW; cc++) {
-          if (cc < 0 || cc >= COLS) continue;
-          if (dist >= depthBuffer[cc]) continue;
-          chGrid[row][cc] = glyph.rows[ri].ch;
-          colGrid[row][cc] = darken(glyph.rows[ri].color, Math.min(0.6, dist / 20));
-        }
-      }
-    }
+    drawBillboardSprite(chGrid, colGrid, bgGrid, depthBuffer, spriteDef, col, halfW, size, baseRow, dist);
   }
 
-  // ---- flatten to colored HTML (run-length group by color to limit spans) ----
+  // ---- flatten to colored HTML (run-length group by fg+bg to limit spans) ----
   let html = "";
   for (let r = 0; r < ROWS; r++) {
-    let runColor = null, runText = "";
+    let runColor = null, runBg = null, runText = "";
     for (let c = 0; c < COLS; c++) {
       const color = colGrid[r][c];
+      const bg = bgGrid[r][c];
       const ch = chGrid[r][c];
-      if (color !== runColor) {
-        if (runText) html += `<span style="color:${runColor}">${runText}</span>`;
-        runColor = color; runText = ch;
+      if (color !== runColor || bg !== runBg) {
+        if (runText) html += spanFor(runColor, runBg, runText);
+        runColor = color; runBg = bg; runText = ch;
       } else {
         runText += ch;
       }
     }
-    if (runText) html += `<span style="color:${runColor}">${runText}</span>`;
+    if (runText) html += spanFor(runColor, runBg, runText);
     html += "\n";
   }
   screenEl.innerHTML = html;

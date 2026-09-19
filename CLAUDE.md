@@ -38,13 +38,24 @@ from scratch as a small, expandable foundation rather than a demo.
   vs E/W faces) for cheap directional lighting.
 - `castRay()`: grid DDA raycast, one call per screen column, returns
   hit distance / which face / material id.
-- `SPRITES` / `SPRITE_GLYPHS`: billboarded objects (trees, an NPC)
-  projected into screen space, depth-tested per column against the
-  wall pass so they're hidden correctly behind walls.
-- `render()`: builds a `[ROWS][COLS]` character+color grid, then
-  flattens it into one run-length-encoded HTML string (grouping
-  consecutive same-color runs into a single `<span>`) written to a
-  `<pre>` element once per frame.
+- `SPRITES` / `SPRITE_TYPES`: billboarded objects (trees, villagers, a
+  mayor, a forester, soldiers) projected into screen space, depth-tested
+  per column against the wall pass so they're hidden correctly behind
+  walls. Each type's *shape* comes from `humanoidSilhouette()` /
+  `treeSilhouette()` — proportions (head/shoulder/waist/leg fractions,
+  or canopy/trunk split) generated procedurally into a `[subRows][cols]`
+  grid of palette-key strings, not hand-typed ASCII-art rows. Add a new
+  type by giving it a shape function + a `palette` (legend key -> hex
+  color), not by drawing a new sprite sheet.
+- `render()`: builds `[ROWS][COLS]` character + foreground-color +
+  background-color grids, then flattens them into one run-length-encoded
+  HTML string (grouping consecutive same fg+bg runs into a single
+  `<span>`) written to a `<pre>` element once per frame. Sprites pack two
+  vertical "pixels" into each character cell via `▀`/`▄` half-block
+  glyphs (`paintSpriteCell()`) — foreground = the cell's top half,
+  background = its bottom half — doubling their effective vertical
+  resolution versus one flat character per cell. Walls/floor still use
+  one color per cell (background stays the page default there).
 - `update()`: WASD/arrow movement with axis-separated collision
   (slides along walls instead of stopping dead), Q/E keyboard turn,
   pointer-lock mouse look, plus touch (virtual joystick + drag-to-look)
