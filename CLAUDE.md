@@ -50,12 +50,17 @@ from scratch as a small, expandable foundation rather than a demo.
 - `render()`: builds `[ROWS][COLS]` character + foreground-color +
   background-color grids, then flattens them into one run-length-encoded
   HTML string (grouping consecutive same fg+bg runs into a single
-  `<span>`) written to a `<pre>` element once per frame. Sprites pack two
-  vertical "pixels" into each character cell via `▀`/`▄` half-block
-  glyphs (`paintSpriteCell()`) — foreground = the cell's top half,
-  background = its bottom half — doubling their effective vertical
-  resolution versus one flat character per cell. Walls/floor still use
-  one color per cell (background stays the page default there).
+  `<span>`) written to a `<pre>` element once per frame. Sprites, and a
+  wall's top/bottom edge against sky/floor, pack two vertical "pixels"
+  into each character cell via `▀`/`▄` half-block glyphs (`paintCell()`)
+  — foreground = the cell's top half, background = its bottom half —
+  doubling effective vertical resolution versus one flat character per
+  cell. Wall height is kept as a float (`wallTopF`/`wallBottomF` in the
+  wall pass) specifically so that edge position is known precisely enough
+  to split it this way (`halfBlockSplit()`) instead of snapping to the
+  nearest whole row — that's what removes the stair-step look from a
+  distant wall's skyline. Everywhere else (the solid middle of a wall,
+  ordinary floor) still uses one color per cell.
 - `update()`: WASD/arrow movement with axis-separated collision
   (slides along walls instead of stopping dead), Q/E keyboard turn,
   pointer-lock mouse look, plus touch (virtual joystick + drag-to-look)

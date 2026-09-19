@@ -308,7 +308,9 @@ const SPRITE_TYPES = {
 // doubling effective vertical resolution for free versus one color per cell.
 // Falls back to ▄ (bottom only) or leaves the cell untouched (both empty, so
 // whatever the wall/floor pass already drew there keeps showing through).
-function paintSpriteCell(chGrid, colGrid, bgGrid, row, col, topColor, bottomColor) {
+// General-purpose: used for sprite silhouettes AND for smoothing a wall's
+// top/bottom edge against sky/floor (see halfBlockSplit() + the wall pass).
+function paintCell(chGrid, colGrid, bgGrid, row, col, topColor, bottomColor) {
   if (topColor && bottomColor) {
     chGrid[row][col] = HALF_UPPER; colGrid[row][col] = topColor; bgGrid[row][col] = bottomColor;
   } else if (topColor) {
@@ -316,6 +318,18 @@ function paintSpriteCell(chGrid, colGrid, bgGrid, row, col, topColor, bottomColo
   } else if (bottomColor) {
     chGrid[row][col] = HALF_LOWER; colGrid[row][col] = bottomColor; bgGrid[row][col] = DEFAULT_BG;
   }
+}
+
+// Splits one character row into two sub-pixel samples (at its quarter and
+// three-quarter points) against a single boundary position `boundaryF`,
+// returning which of the two colors each half falls on. Used to smooth any
+// sharp vertical edge (wall-vs-sky, wall-vs-floor) to half-row precision
+// instead of snapping the edge to the nearest whole character row.
+function halfBlockSplit(row, boundaryF, aboveColor, belowColor) {
+  return {
+    topColor: row + 0.25 < boundaryF ? aboveColor : belowColor,
+    bottomColor: row + 0.75 < boundaryF ? aboveColor : belowColor,
+  };
 }
 
 function drawBillboardSprite(chGrid, colGrid, bgGrid, depthBuffer, spriteDef, col, halfW, size, baseRow, dist) {
@@ -333,7 +347,7 @@ function drawBillboardSprite(chGrid, colGrid, bgGrid, depthBuffer, spriteDef, co
       const topKey = topRow[ci], bottomKey = bottomRow[ci];
       const topColor = topKey ? darken(spriteDef.palette[topKey], fade) : null;
       const bottomColor = bottomKey ? darken(spriteDef.palette[bottomKey], fade) : null;
-      paintSpriteCell(chGrid, colGrid, bgGrid, row, cc, topColor, bottomColor);
+      paintCell(chGrid, colGrid, bgGrid, row, cc, topColor, bottomColor);
     }
   }
 }
@@ -654,9 +668,14 @@ function render() {
     depthBuffer[col] = correctedDist;
 
     const mat = MATERIALS[material] || MATERIALS[1];
-    const wallHeight = Math.min(ROWS, Math.floor((ROWS / (correctedDist + 0.0001)) * mat.height));
-    const wallTop = Math.max(0, horizon - Math.floor(wallHeight / 2));
-    const wallBottom = Math.min(ROWS - 1, horizon + Math.floor(wallHeight / 2));
+    // Kept as floats (not floored) so the exact edge position is known —
+    // that's what lets the edges below be smoothed to half-row precision
+    // instead of snapping to the nearest whole character row.
+    const wallHeight = Math.min(ROWS, (ROWS / (correctedDist + 0.0001)) * mat.height);
+    const wallTopF = horizon - wallHeight / 2;
+    const wallBottomF = horizon + wallHeight / 2;
+    const wallTop = Math.max(0, Math.floor(wallTopF));
+    const wallBottom = Math.min(ROWS - 1, Math.floor(wallBottomF));
 
     const shade = shadeIndex(correctedDist, 16, WALL_SHADES.length);
     const wallChar = WALL_SHADES[shade];
@@ -670,6 +689,21 @@ function render() {
     const rayDirX = Math.cos(rayAngle), rayDirY = Math.sin(rayAngle);
     const cameraCorrection = Math.cos(rayAngle - player.angle);
 
+    // Real ray-floor intersection for a given row (same corrected-distance
+    // relationship the wall height above uses, inverted): each row below the
+    // wall slice maps to an actual world point, so the ground can genuinely
+    // vary (grass/dirt/water) instead of one hardcoded color everywhere.
+    function floorCellAt(row) {
+      const floorDepth = Math.max(0.5, row - horizon); // clamp: avoid a division blow-up right at the horizon
+      const floorCorrectedDist = (ROWS * mat.height) / (2 * floorDepth);
+      const floorDist = floorCorrectedDist / cameraCorrection;
+      const floorX = player.x + rayDirX * floorDist;
+      const floorY = player.y + rayDirY * floorDist;
+      const floorMat = FLOOR_MATERIALS[floorTypeAt(floorX, floorY)];
+      const fi = Math.min(floorMat.chars.length - 1, Math.floor(floorDepth / 5));
+      return { ch: floorMat.chars[floorMat.chars.length - 1 - fi], color: darken(floorMat.color, 0.15 + fi * 0.15) };
+    }
+
     for (let row = 0; row < ROWS; row++) {
       if (row < wallTop) {
         chGrid[row][col] = SKY_CHAR;
@@ -677,21 +711,20 @@ function render() {
         chGrid[row][col] = wallChar;
         colGrid[row][col] = wallColor;
       } else {
-        // Real ray-floor intersection (same corrected-distance relationship
-        // the wall height above uses, inverted): each row below the wall
-        // slice maps to an actual world point, so the ground can genuinely
-        // vary (grass/dirt/water) instead of one hardcoded color everywhere.
-        const floorDepth = row - horizon;
-        const floorCorrectedDist = (ROWS * mat.height) / (2 * floorDepth);
-        const floorDist = floorCorrectedDist / cameraCorrection;
-        const floorX = player.x + rayDirX * floorDist;
-        const floorY = player.y + rayDirY * floorDist;
-        const floorMat = FLOOR_MATERIALS[floorTypeAt(floorX, floorY)];
-        const fi = Math.min(floorMat.chars.length - 1, Math.floor(floorDepth / 5));
-        chGrid[row][col] = floorMat.chars[floorMat.chars.length - 1 - fi];
-        colGrid[row][col] = darken(floorMat.color, 0.15 + fi * 0.15);
+        const floorCell = floorCellAt(row);
+        chGrid[row][col] = floorCell.ch;
+        colGrid[row][col] = floorCell.color;
       }
     }
+
+    // Smooth the wall's top (sky) and bottom (floor) edges to half-row
+    // precision instead of the stair-step a whole-row-snapped edge gives,
+    // especially visible on a distant wall's skyline. Same half-block
+    // packing trick sprites use, just on a straight edge instead of a shape.
+    const topEdge = halfBlockSplit(wallTop, wallTopF, null, wallColor);
+    paintCell(chGrid, colGrid, bgGrid, wallTop, col, topEdge.topColor, topEdge.bottomColor);
+    const bottomEdge = halfBlockSplit(wallBottom, wallBottomF, wallColor, floorCellAt(wallBottom).color);
+    paintCell(chGrid, colGrid, bgGrid, wallBottom, col, bottomEdge.topColor, bottomEdge.bottomColor);
   }
 
   // ---- sprite pass (billboards, depth-tested against the wall pass) ----
