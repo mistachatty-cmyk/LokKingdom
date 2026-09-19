@@ -126,10 +126,12 @@
 })();
 
 /* =====================================================================
-   ASCII 3D ENGINE v2 — single file, zero dependencies
-   Grid-based world -> per-column DDA raycast -> ASCII wall/floor/sky
-   + variable wall height per material + colored output + billboard
-   sprites (trees/npcs) with correct depth occlusion.
+   ASCII 3D ENGINE v3 — single file, zero dependencies
+   Grid-based world -> per-column DDA raycast -> Unicode block-shaded
+   wall/floor/sky + variable wall height per material + textured
+   (brick-banded) walls + material-typed floor (grass/dirt/water) +
+   billboard sprites (trees, villagers, a mayor, a forester, soldiers)
+   with correct depth occlusion.
 
    File layout is intentionally flat (one HTML file = the whole game).
    See README.md in this repo for the expansion roadmap.
@@ -188,17 +190,83 @@ const SPRITES = [
   { x: 9.5, y: 9.5, type: "tree" },
   { x: 18.5, y: 9.5, type: "tree" },
   { x: 21.5, y: 9.5, type: "tree" },
-  { x: 13.5, y: 1.5, type: "npc" },
+  { x: 13.5, y: 1.5, type: "mayor" },
+  { x: 4.5, y: 11.5, type: "villager" },
+  { x: 5.5, y: 12.3, type: "villager" },
+  { x: 20.5, y: 11.5, type: "villager" },
+  { x: 8, y: 9.7, type: "forester" },
+  { x: 3.5, y: 2.5, type: "soldier" },
+  { x: 22.5, y: 2.5, type: "soldier" },
 ];
+// Each glyph is a small stack of {ch, color} rows, near->far darkened the
+// same way walls/floor are. Kept to Unicode block chars + plain ASCII only
+// (no wide/exotic glyphs) so the monospace column grid never drifts.
 const SPRITE_GLYPHS = {
-  tree: { rows: ["^", "*", "|"], color: "#3fbf5f" },
-  npc:  { rows: ["o", "|"],      color: "#e0c060" },
+  tree: {
+    rows: [
+      { ch: "▓", color: "#2e7d32" },
+      { ch: "█", color: "#388e3c" },
+      { ch: "|", color: "#6d4c2b" },
+    ],
+  },
+  villager: {
+    rows: [
+      { ch: "o", color: "#e0c9a0" },
+      { ch: "█", color: "#c9a15a" },
+      { ch: "|", color: "#8a6d3f" },
+    ],
+  },
+  mayor: {
+    rows: [
+      { ch: "o", color: "#f0dca0" },
+      { ch: "█", color: "#7b3fa0" },
+      { ch: "|", color: "#4a2a63" },
+    ],
+  },
+  forester: {
+    rows: [
+      { ch: "o", color: "#d9c9a0" },
+      { ch: "█", color: "#4f7a3f" },
+      { ch: "|", color: "#3f5a2f" },
+    ],
+  },
+  soldier: {
+    rows: [
+      { ch: "o", color: "#c9d0d6" },
+      { ch: "█", color: "#5a6570" },
+      { ch: "|", color: "#3a4249" },
+    ],
+  },
 };
 
 // ---------------- CHARACTER PALETTES ----------------
-const WALL_SHADES = ["#", "%", "*", "+", "=", "-", ":", "."]; // near -> far
-const FLOOR_CHARS = [",", ".", "`", " "];
+// Unicode block-shade characters (U+2588/2593/2592/2591) instead of ASCII
+// punctuation: they're built for exactly this (guaranteed single-cell width
+// in any monospace font, unlike arbitrary symbols) and read as an actual
+// smooth near->far gradient instead of a row of punctuation marks.
+const WALL_SHADES = ["█", "▓", "▓", "▒", "▒", "░", "░", " "]; // near -> far
 const SKY_CHAR = " ";
+
+// ---------------- FLOOR MATERIALS ----------------
+// Ground appearance is independent of wall collision (a tile is still just
+// "walkable" or not, per MAP): WATER_ZONES marks rectangular pools purely
+// for looks today — a future roadmap item can make them impassable / need
+// a bridge. Everywhere else alternates dirt/grass so open ground reads as
+// actual terrain instead of one flat tone.
+const WATER_ZONES = [
+  { x1: 10, y1: 9.3, x2: 15, y2: 13.7 }, // courtyard pond between the two colonnades
+];
+const FLOOR_MATERIALS = {
+  dirt:  { chars: ["▓", "▒", "░", " "], color: "#6f5a3f" },
+  grass: { chars: ["▓", "▒", "░", " "], color: "#3f7a3f" },
+  water: { chars: ["▓", "▒", "~", " "], color: "#2f6fae" },
+};
+function floorTypeAt(x, y) {
+  for (const z of WATER_ZONES) {
+    if (x >= z.x1 && x <= z.x2 && y >= z.y1 && y <= z.y2) return "water";
+  }
+  return ((Math.floor(x) + Math.floor(y)) % 5 === 0) ? "grass" : "dirt";
+}
 
 function shadeIndex(dist, maxDist, levels) {
   const t = Math.min(1, dist / maxDist);
@@ -447,7 +515,12 @@ function castRay(rayAngle) {
     ? (mapX - player.x + (1 - stepX) / 2) / (dirX || 1e-9)
     : (mapY - player.y + (1 - stepY) / 2) / (dirY || 1e-9);
 
-  return { dist: Math.max(0.0001, Math.abs(perpDist)), side, material };
+  // Fractional position along the hit wall face (0..1) — used to band the
+  // wall texture (see "brickBand" in render()) instead of one flat tone.
+  let wallX = side === 0 ? player.y + perpDist * dirY : player.x + perpDist * dirX;
+  wallX -= Math.floor(wallX);
+
+  return { dist: Math.max(0.0001, Math.abs(perpDist)), side, material, wallX };
 }
 
 // ---------------- RENDER ----------------
@@ -465,7 +538,7 @@ function render() {
   for (let col = 0; col < COLS; col++) {
     const cameraX = (2 * col) / COLS - 1;
     const rayAngle = player.angle + Math.atan(cameraX * Math.tan(FOV / 2));
-    const { dist, side, material } = castRay(rayAngle);
+    const { dist, side, material, wallX } = castRay(rayAngle);
     const correctedDist = dist * Math.cos(rayAngle - player.angle);
     depthBuffer[col] = correctedDist;
 
@@ -477,7 +550,14 @@ function render() {
     const shade = shadeIndex(correctedDist, 16, WALL_SHADES.length);
     const wallChar = WALL_SHADES[shade];
     const baseColor = side === 0 ? mat.colorNS : mat.colorEW;
-    const wallColor = darken(baseColor, shade / WALL_SHADES.length * 0.7);
+    // A coarse "brick coursing" band across the wall face (from the raycast
+    // hit's own fractional position) so flat walls read as textured instead
+    // of one uniform tone edge-to-edge.
+    const brickBand = Math.floor(wallX * 6) % 2 === 0;
+    const wallColor = darken(baseColor, shade / WALL_SHADES.length * 0.7 + (brickBand ? 0.1 : 0));
+
+    const rayDirX = Math.cos(rayAngle), rayDirY = Math.sin(rayAngle);
+    const cameraCorrection = Math.cos(rayAngle - player.angle);
 
     for (let row = 0; row < ROWS; row++) {
       if (row < wallTop) {
@@ -486,10 +566,19 @@ function render() {
         chGrid[row][col] = wallChar;
         colGrid[row][col] = wallColor;
       } else {
+        // Real ray-floor intersection (same corrected-distance relationship
+        // the wall height above uses, inverted): each row below the wall
+        // slice maps to an actual world point, so the ground can genuinely
+        // vary (grass/dirt/water) instead of one hardcoded color everywhere.
         const floorDepth = row - horizon;
-        const fi = Math.min(FLOOR_CHARS.length - 1, Math.floor(floorDepth / 5));
-        chGrid[row][col] = FLOOR_CHARS[FLOOR_CHARS.length - 1 - fi];
-        colGrid[row][col] = darken("#6f5a3f", 0.15 + fi * 0.15);
+        const floorCorrectedDist = (ROWS * mat.height) / (2 * floorDepth);
+        const floorDist = floorCorrectedDist / cameraCorrection;
+        const floorX = player.x + rayDirX * floorDist;
+        const floorY = player.y + rayDirY * floorDist;
+        const floorMat = FLOOR_MATERIALS[floorTypeAt(floorX, floorY)];
+        const fi = Math.min(floorMat.chars.length - 1, Math.floor(floorDepth / 5));
+        chGrid[row][col] = floorMat.chars[floorMat.chars.length - 1 - fi];
+        colGrid[row][col] = darken(floorMat.color, 0.15 + fi * 0.15);
       }
     }
   }
@@ -522,8 +611,8 @@ function render() {
         for (let cc = col - halfW; cc <= col + halfW; cc++) {
           if (cc < 0 || cc >= COLS) continue;
           if (dist >= depthBuffer[cc]) continue;
-          chGrid[row][cc] = glyph.rows[ri];
-          colGrid[row][cc] = darken(glyph.color, Math.min(0.6, dist / 20));
+          chGrid[row][cc] = glyph.rows[ri].ch;
+          colGrid[row][cc] = darken(glyph.rows[ri].color, Math.min(0.6, dist / 20));
         }
       }
     }
