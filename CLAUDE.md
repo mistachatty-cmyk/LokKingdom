@@ -5,7 +5,7 @@ session in this repo. Keep it current as the project evolves.
 
 ## What this is
 
-LokKingdom — a zero-dependency ASCII/text-rendered 3D engine. The world
+LokRealm — a zero-dependency ASCII/text-rendered 3D engine. The world
 is a grid, rendered with one raycast per screen column (Wolfenstein-
 style DDA), and every visible surface is a colored monospace character
 instead of a textured pixel. No Three.js, no 3D models, no build step.
@@ -121,21 +121,54 @@ Deploys to Vercel as a static site (`vercel.json` sets `framework:
 null` so Vercel doesn't try to detect/build a framework) — `index.html`
 at the repo root is served as-is, no build command needed.
 
+## Implemented living-world systems
+
+- Deterministic 48x48 seeded generation with connected roads, wilderness,
+  village prefabs, and the preserved Whisper Maze landmark.
+- Layered terrain rendering: seeded grassland, forest floor, meadows, dirt,
+  water, and roads use their own floor glyphs/colors; sky and world shading
+  respond to the simulated day/night clock. Flora has pines, oaks, birches,
+  autumn trees, bushes, rocks, flowers, reeds, scale variation, and light wind.
+- Separate ground and collision layers, local saves, and portable world export.
+- Four named NPCs with roles, scheduled wandering, dialogue, quests, and trade.
+- Axe/tree harvesting, inventory, minimap, main/pause UI, and a paint editor.
+- Neutral player **Freehold** construction: harvest wood, claim clear dry
+  land, then place persisted cottages, palisade segments and roads. The
+  structure records use `chunkKey:"0,0"` already so construction data has a
+  migration path when chunk streaming lands. PACK opens the builder on touch.
+- `BUILDING_BLUEPRINTS`, `STRUCTURES`, `HEIGHTS`, and `CELL_META` are the
+  semantic architecture layer. Human and Diligy buildings retain roof,
+  facade-feature, race, settlement, condition, and variable-height data.
+- `SETTLEMENTS`, `RACES`, `SETTLEMENT_KINDS`, `PEOPLE`, and `FACTIONS` are the
+  simulation layer. Hearthmere models human households, children, maturation,
+  migration, production, housing, care, and safety. Verdanthold models Diligy
+  cooperative growth through helpers, seedlings, sunlight, water, nutrients,
+  nursery capacity, and root links. Inspect/advance it with the `J` ledger.
+- Each race has six population stages. Stage changes can construct semantic
+  buildings; weekly exchange develops the initial Human–Diligy relationship.
+- `ELEVATION`, `WATER`, `WATER_SOURCES`, and `BASE_GROUND` are the shallow-water
+  sandbox. `simulateWater()` runs at a capped 0.12-second step and flows water
+  only through non-wall cells. Keep it small-grid and browser-native:
+  `wkwan/flo` is Rust/Vulkan and explicitly not web-ready, so it is reference
+  material rather than a dependency or integration target.
+
 ## Roadmap (priority order)
 
-1. Load `MAP` from a JSON/data file instead of a hardcoded string, so
-   levels can be authored separately from engine code
-2. Variable wall heights read per-tile (not just per-material)
-3. More sprite types + simple animation frames (idle bob, etc.)
-4. Basic interaction: walking into a sprite triggers a message/pickup
-5. Minimap overlay (toggle key), reusing the same `MAP` data
-6. Simple NPC movement (wander or chase within the grid)
-7. Multiple maps / level transitions
+1. Deterministic neighboring chunk streaming with small saved edit deltas
+2. Prefab rotation, sockets, weighted village grammar, bridges, and road grades
+3. NPC memory, relationships, needs, occupations, and data-driven dialogue nodes
+4. Variable terrain elevation, stairs, and then progressive voxel capabilities
+5. World JSON import plus editor undo/redo and prefab placement
+6. Multiple biomes and an urban prefab/generation catalog
+7. Sprite animation frames and seasonal/day-night palettes
 8. Swap `<pre>` + spans for `<canvas>` + `fillText` if color count or
    frame size makes DOM spans a measured bottleneck (don't do this
    preemptively — only if profiling shows it's needed)
 9. ~~Mobile touch controls (virtual joystick + drag-to-look)~~ — done
 10. Sound via WebAudio, kept inline (no external audio files)
+
+See `docs/WORLD_SCALE_PLAN.md` before changing generation or persistence: the
+48×48 map is explicitly the starter chunk, not the intended world limit.
 
 When picking up work here, default to the next unchecked roadmap item
 unless told otherwise.

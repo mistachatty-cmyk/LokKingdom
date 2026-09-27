@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>LokKingdom</title>
+<title>LokRealm — Living ASCII World</title>
 <style>
   html,body{
     margin:0;height:100%;background:#05070a;overflow:hidden;touch-action:none;
@@ -94,10 +94,41 @@
   }
   #gyro-btn{ top:16px; }
   #invert-gyro-btn{ top:52px; }
+  #pause-btn{position:fixed;top:10px;right:12px;z-index:45;font:11px monospace;background:rgba(14,24,18,.88)}
+  #settings-btn{position:fixed;top:10px;right:94px;z-index:45;font:12px monospace;background:rgba(14,24,18,.88)}
+  #map-btn,#pack-btn,#realm-btn{position:fixed;top:10px;z-index:45;font:11px monospace;background:rgba(14,24,18,.88)}
+  #map-btn{left:10px}#pack-btn{left:62px}#realm-btn{left:122px}
+  button{font:inherit;color:#e8d7a2;background:#182018;border:1px solid #71865a;border-radius:4px;padding:7px 10px}
+  button:hover,button:focus{background:#293829;outline:1px solid #c8a85b}
+  .panel{position:fixed;z-index:30;color:#e8d7a2;background:rgba(7,10,8,.94);border:1px solid #71865a;
+    box-shadow:0 10px 40px #000;padding:14px;font:12px/1.45 monospace;max-width:min(440px,calc(100vw - 42px))}
+  .hidden{display:none!important}.panel h1,.panel h2{margin:0 0 9px;color:#f4d77c}.panel p{color:#aebb9b}
+  #main-menu{inset:50% auto auto 50%;transform:translate(-50%,-50%);text-align:center;min-width:min(360px,75vw)}
+  #main-menu button{display:block;width:100%;margin:7px 0}
+  #dialogue{left:50%;bottom:22px;transform:translateX(-50%);width:min(620px,80vw)}
+  #dialogue .name{color:#7fdc7f;font-weight:bold}#dialogue .choices button{margin:7px 7px 0 0}
+  #inventory{right:12px;top:96px;min-width:180px}#inventory div{display:flex;justify-content:space-between}
+  #toast{position:fixed;z-index:40;left:50%;top:14%;transform:translateX(-50%);color:#f4d77c;
+    background:#101710dd;border:1px solid #71865a;padding:8px 14px;font:12px monospace;pointer-events:none}
+  #map-panel{left:10px;top:52px;padding:8px;font:7px/1 monospace;color:#9fcf85;max-width:none}
+  #map-display{margin:0;white-space:pre;line-height:1;cursor:crosshair}.map-legend{display:block;margin-top:7px;color:#b9cbb0;font:10px/1.2 monospace}
+  #editor{right:10px;bottom:10px;width:min(370px,80vw)}#editor button.active{background:#745b2a;color:#fff}
+  #settings-panel{left:50%;top:50%;transform:translate(-50%,-50%);width:min(420px,82vw)}
+  .setting-row{display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid #334433;padding:10px 0}
+  .setting-row:first-of-type{border-top:0}.setting-row small{color:#aebb9b;display:block;max-width:260px}
+  #settlements-panel{left:50%;top:50%;transform:translate(-50%,-50%);width:min(680px,86vw);max-height:78vh;overflow:auto}
+  .settlement-card{border:1px solid #41513d;background:#0d140f;margin:9px 0;padding:10px}
+  .settlement-card.human{border-left:4px solid #d6ad68}.settlement-card.diligy{border-left:4px solid #59c86b}
+  .settlement-card h3{margin:0 0 5px}.meter{height:6px;background:#1d291f;margin:5px 0;overflow:hidden}
+  .meter i{display:block;height:100%;background:#72b36f}.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;color:#aebda7}
+  .stat-grid b{display:block;color:#e9d7a5}.race-tag{float:right;color:#83d795}
+  #crosshair{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);color:#ffffff88;font:15px monospace;pointer-events:none}
+  #action-btn{position:fixed;right:20px;bottom:132px;width:62px;height:62px;border-radius:50%;display:none;z-index:20}
+  @media(pointer:coarse){#action-btn{display:block}.panel{font-size:11px}#inventory{top:92px}#hud{top:46px}#pause-btn{left:194px;right:auto}#settings-btn{left:287px;right:auto}}
 </style>
 </head>
 <body>
-<div id="hud">FPS: <span id="fps">0</span> &nbsp; pos: <span id="pos">-</span></div>
+<div id="hud">FPS: <span id="fps">0</span> &nbsp; pos: <span id="pos">-</span> &nbsp; surf: <span id="surface-mode">ON</span></div>
 <div id="debug-hud" class="touch-ui"></div>
 <pre id="screen"></pre>
 <div id="hint">WASD / Arrows: move &nbsp; Q/E: turn &nbsp; Click + mouse: look</div>
@@ -106,6 +137,25 @@
 <div id="look-joystick-base" class="touch-ui"><div id="look-joystick-nub"></div></div>
 <button id="gyro-btn" class="touch-ui">Enable Gyro Look</button>
 <button id="invert-gyro-btn" class="touch-ui">Invert Gyro: On</button>
+<button id="map-btn" class="touch-ui" aria-label="Toggle minimap">MAP</button>
+<button id="pack-btn" class="touch-ui" aria-label="Toggle inventory">PACK</button>
+<button id="realm-btn" class="touch-ui" aria-label="Open settlement ledger">REALM</button>
+<button id="pause-btn" aria-label="Pause game">▶ RESUME</button>
+<button id="settings-btn" aria-label="Open settings">⚙</button>
+<div id="crosshair">+</div>
+<button id="action-btn" class="touch-ui">USE</button>
+<div id="toast" class="hidden"></div>
+<section id="main-menu" class="panel">
+  <h1>LOKREALM</h1><p>A tiny living realm. Every seed becomes a different road, village and wilderness.</p>
+  <button data-menu="continue">Enter Realm</button><button data-menu="new">New Seeded Realm</button>
+  <button data-menu="settings">Settings</button>
+</section>
+<section id="settings-panel" class="panel hidden"><h2>SETTINGS</h2><div class="setting-row"><span><b>Cinematic Surfaces</b><small>Layered caps, facades and foundations make structures feel solid and prevent low walls from opening into the void.</small></span><button id="cinematic-toggle">On</button></div><p><button id="settings-close">Back</button></p></section>
+<section id="dialogue" class="panel hidden"><div class="name"></div><div class="text"></div><div class="choices"></div></section>
+<section id="inventory" class="panel hidden"><h2>PACK</h2><div><span>Axe</span><b>equipped</b></div><div><span>Wood</span><b id="wood-count">0</b></div><div><span>Coin</span><b id="coin-count">3</b></div><div><span>Freehold</span><b id="freehold-status">unclaimed</b></div><p><button id="build-open">Build realm</button></p><p>I closes pack · F uses/interacts</p></section>
+<section id="map-panel" class="panel hidden"><pre id="map-display"></pre><small class="map-legend">@ You · P Freehold · H Human settlement · D Diligy grove</small></section>
+<section id="editor" class="panel hidden"><h2>BUILD & WORLD EDITOR</h2><p id="build-status">Harvest wood, claim a freehold, then build.</p><p>Click the minimap to place. Freehold structures and road changes persist with this seed.</p><div id="editor-tools"></div><p><button id="editor-save">Save</button> <button id="editor-export">Export JSON</button> <button id="editor-close">Close</button></p></section>
+<section id="settlements-panel" class="panel hidden"><h2>REALM SETTLEMENTS</h2><div id="realm-relations"></div><div id="settlement-list"></div><p><button id="advance-day">Advance Simulation Day</button> <button id="settlements-close">Close</button></p><small>J opens this ledger. Settlements continue living while you explore.</small></section>
 
 <script>
 // ---- visible error reporting: shows the real error on-screen instead of
@@ -143,62 +193,179 @@ const JOYSTICK_RADIUS = 45;
 const LOOK_TURN_SPEED = 2.2, LOOK_PITCH_SPEED = 6; // rad/sec, pitch-units/sec at full stick deflection
 const GYRO_YAW_RANGE = Math.PI / 2, GYRO_PITCH_RANGE = 8, GYRO_TILT_RANGE_DEG = 45;
 
-// ---------------- WORLD MAP ----------------
-// 0 = empty. 1/2/3 = wall materials (color + height come from MATERIALS below).
-const MAP = [
-  "1111111111111111111111111",
-  "1..........1.......1....1",
-  "1..111111..1..111111..1.1",
-  "1..1....1..1..1....1..1.1",
-  "1..1.222.1.1..1.222.1.1.1",
-  "1..1.2.2.1.1..1.2.2.1.1.1",
-  "1..1.222.1....1.222.1.1.1",
-  "1..1......1111.......1.1",
-  "1..111111111111111111.1.1",
-  "1.......................1",
-  "1.33333333.....33333333.1",
-  "1.3.....3.......3.....3.1",
-  "1.3.....3.......3.....3.1",
-  "1.33333333.....33333333.1",
-  "1.......................1",
-  "1111111111111111111111111",
-];
-const MAPW = MAP[0].length, MAPH = MAP.length;
-
-// Per-material appearance: relative height (1 = full room height) and base color.
+// ---------------- SEEDED LIVING WORLD ----------------
+// Data stays inline but is cleanly separated from rendering. The generator uses
+// deterministic roads + prefabs, so a seed can be shared now and chunked later.
+const MAPW = 48, MAPH = 48;
+let MAP = [], GROUND = [], BASE_GROUND = [], ELEVATION = [], WATER = [], WATER_SOURCES = [], HEIGHTS = [], CELL_META = [], SPRITES = [], NPCS = [];
+let waterAccumulator = 0, waterEnabled = true;
+let STRUCTURES = [], SETTLEMENTS = [], PEOPLE = [], FACTIONS = [], simulationDay = 1;
+let worldSeed = Number(localStorage.getItem("lokrealm-seed")) || 616;
+let rngState = worldSeed >>> 0;
+const inventory = { axe: 1, wood: 0, coin: 3 };
+let playerHold = {claimed:false,x:null,y:null,name:"Freehold",structures:0,woodSpent:0,chunkKey:"0,0"};
 const MATERIALS = {
-  1: { height: 1.0, colorNS: "#4fae4f", colorEW: "#3d8f3d" }, // outer walls
-  2: { height: 1.0, colorNS: "#3fa0b0", colorEW: "#2f7d8a" }, // inner room
-  3: { height: 0.55, colorNS: "#c98f3f", colorEW: "#a4712e" }, // low pillars
+  1:{height:1,colorNS:"#73835c",colorEW:"#566747",name:"hedge"},
+  2:{height:1,colorNS:"#96714b",colorEW:"#755437",name:"timber"},
+  3:{height:.68,colorNS:"#b99a66",colorEW:"#8d7049",name:"stone"},
+  4:{height:1.18,colorNS:"#6d7180",colorEW:"#505560",name:"keep"},
+  5:{height:.35,colorNS:"#976747",colorEW:"#704933",name:"fence"},
+  6:{height:1.05,colorNS:"#d0b982",colorEW:"#aa925f",name:"plaster"},
+  7:{height:1.12,colorNS:"#497d4a",colorEW:"#315d38",name:"living-bark"},
+  8:{height:1.22,colorNS:"#6aac57",colorEW:"#477d42",name:"woven-leaf"},
+  9:{height:1.38,colorNS:"#66858a",colorEW:"#465f67",name:"tower-stone"}
 };
-
-function tileAt(x, y) {
-  const xi = Math.floor(x), yi = Math.floor(y);
-  if (xi < 0 || yi < 0 || xi >= MAPW || yi >= MAPH) return 1;
-  const ch = MAP[yi][xi];
-  return ch === "." ? 0 : parseInt(ch, 10);
-}
-
-// ---------------- SPRITES (billboards) ----------------
-// Simple world-space objects drawn as a small glyph blob, occluded by the
-// depth buffer collected during the wall pass. Expand: add per-type shapes,
-// animation frames, or swap for real sub-images once you outgrow ASCII.
-const SPRITES = [
-  { x: 6.5, y: 9.5, type: "tree" },
-  { x: 9.5, y: 9.5, type: "tree" },
-  { x: 18.5, y: 9.5, type: "tree" },
-  { x: 21.5, y: 9.5, type: "tree" },
-  { x: 13.5, y: 1.5, type: "npc" },
+const CINEMATIC_SURFACES = {
+  1:{cap:"^",trim:"=",foundation:"#",color:"#697b55"}, 2:{cap:"/",trim:"+",foundation:"#",color:"#8d6545"},
+  3:{cap:"=",trim:"%",foundation:"#",color:"#9a805a"}, 4:{cap:"^",trim:"#",foundation:"%",color:"#66707b"},
+  5:{cap:"-",trim:"+",foundation:"=",color:"#805437"}, 6:{cap:"/",trim:"+",foundation:"#",color:"#c1aa78"},
+  7:{cap:"*",trim:"Y",foundation:"#",color:"#467c4a"}, 8:{cap:"*",trim:"+",foundation:"Y",color:"#60a754"}, 9:{cap:"^",trim:"%",foundation:"#",color:"#5b6973"}
+};
+const PREFABS = {
+  cottage:["22222","2...2","2...2","2...2","22.22"],
+  hall:["3333333","3.....3","3.....3","3.....3","333.333"],
+  well:["333","3.3","333"],
+  maze:["111111111","1...1...1","1.111.1.1","1.....1.1","111.111.1","1.......1","1.11111.1","1.......1","111.11111"]
+};
+const BUILDING_BLUEPRINTS = {
+  cottage:{race:"human",material:6,roof:"#754f37",height:1.05,layout:["#####","#...#","W...W","#...#","##D##"]},
+  longhouse:{race:"human",material:2,roof:"#85613d",height:1.1,layout:["#######","#.....#","W.....W","#.....#","###D###"]},
+  tavern:{race:"human",material:6,roof:"#684733",height:1.3,layout:["#######","W.....W","#.....#","W.....W","###D###"]},
+  watchtower:{race:"human",material:9,roof:"#3f4650",height:1.65,layout:["###","W.W","#D#"]},
+  gatehouse:{race:"human",material:9,roof:"#484d53",height:1.35,layout:["#####","#...#","#.D.#","#...#","#####"]},
+  growthPod:{race:"diligy",material:7,roof:"#275f38",height:1.05,layout:[".###.","#...#","W...W","#...#",".D#D."]},
+  sunCanopy:{race:"diligy",material:8,roof:"#62a84e",height:1.28,layout:["..#..",".###.","#...#","#...#",".D.D."]},
+  rootHall:{race:"diligy",material:7,roof:"#1f5735",height:1.35,layout:[".#####.","#.....#","W.....W","#.....#","##D.D##"]},
+  groveHeart:{race:"diligy",material:8,roof:"#75c95d",height:1.55,layout:["..#..",".###.","##.##",".D.D.","..#.."]},
+  claimPost:{race:"freehold",material:5,roof:"#9a7048",height:1.02,layout:["C"]},
+  palisade:{race:"freehold",material:5,roof:"#815536",height:1.05,layout:["#"]},
+  freeholdCottage:{race:"freehold",material:6,roof:"#6d4935",height:1.12,layout:["#####","#...#","W...W","#...#","##D##"]}
+};
+const BUILD_COSTS = {claimPost:4,palisade:2,freeholdCottage:8,roadBuild:1};
+const RACES = {
+  human:{name:"Humans",color:"#d6ad68",stages:["Outpost","Hamlet","Village","Town","Fortified City","Kingdom Capital"],thresholds:[0,8,18,40,80,160]},
+  diligy:{name:"Diligy",color:"#59c86b",stages:["Sprout Circle","Young Grove","Root Village","Great Grove","Root Citadel","Green Dominion"],thresholds:[0,6,14,30,60,120]}
+};
+const SETTLEMENT_KINDS = {
+  human:{crossroads:{name:"Crossroads Community",bonuses:{coin:1.15,food:1}},agrarian:{name:"Farming Village",bonuses:{food:1.35}},fortress:{name:"Fort Settlement",bonuses:{safety:1.35}},market:{name:"Market Town",bonuses:{coin:1.4}}},
+  diligy:{sunGrove:{name:"Sun Grove",bonuses:{light:1.35}},rootColony:{name:"Root Colony",bonuses:{rootLinks:1.3}},nursery:{name:"Seedling Sanctuary",bonuses:{growth:1.3}},citadel:{name:"Root Citadel",bonuses:{safety:1.35}}}
+};
+const NPC_ARCHETYPES = [
+  {name:"Mara",role:"innkeeper",color:"#e6b86a",lines:["Road dust in your eyes? The Hearth & Thistle has soup.","Travelers say the old hedge maze changes after rain."],quest:"Bring 5 wood and I'll pay 8 coin."},
+  {name:"Osric",role:"carpenter",color:"#d28d55",lines:["Good roads make a realm. Good timber keeps it standing.","Plant, harvest, rebuild—that is how villages endure."],quest:"The western fence could use fresh timber."},
+  {name:"Elowen",role:"herbalist",color:"#7fdc7f",lines:["I walk at dawn; the quiet plants tell more than people.","The forest follows rules, even when it looks wild."],quest:"Look for the stone maze beyond the north road."},
+  {name:"Tomas",role:"guard",color:"#9fbbe8",lines:["I patrol between the square and gate until sundown.","A road is a promise that someone expects you home."],quest:"Speak to everyone in the village before leaving."}
+];
+const DILIGY_ARCHETYPES = [
+  {name:"Virel",role:"sun-tender",color:"#67d77a",lines:["We lean together when the light is thin.","A grove is not a place. It is everyone sharing what they can."],quest:"Our young pods need water, light, and four linked helpers."},
+  {name:"Mosscap",role:"root-shaper",color:"#3fae62",lines:["Stone is placed. Roots are persuaded.","The new arch will finish when the eastern roots reach it."],quest:"Bring 5 wood; I can teach it to live again."},
+  {name:"Luma-Frond",role:"seed-keeper",color:"#8bea72",lines:["Each seedling remembers the hands that raised it.","We grow slowly alone and quickly in kindness."],quest:"Keep the grove safe from fire, frost, and blight."}
 ];
 const SPRITE_GLYPHS = {
-  tree: { rows: ["^", "*", "|"], color: "#3fbf5f" },
-  npc:  { rows: ["o", "|"],      color: "#e0c060" },
+  tree:{rows:["^","*","|"],color:"#4ea95a"}, pine:{rows:["^","^","|"],color:"#246e4b"},
+  oak:{rows:["*","*","|"],color:"#5fa34a"}, birch:{rows:["*","*","!"],color:"#9bbf72"},
+  autumn:{rows:["*","*","|"],color:"#c8833e"}, bush:{rows:["*","_"],color:"#65943f"},
+  rock:{rows:["#"],color:"#88919a"}, stump:{rows:["_"],color:"#8b623f"},
+  npc:{rows:["o","|"],color:"#e0c060"}, diligy:{rows:["*","Y"],color:"#59c86b"}, sign:{rows:["=","|"],color:"#d4b06a"},
+  well:{rows:["o","#"],color:"#8aa2a8"}, flower:{rows:["*"],color:"#e276af"}, reed:{rows:["'","|"],color:"#6f9d62"},
+  chimney:{rows:["~","#"],color:"#74645b"}, banner:{rows:[">","|"],color:"#c94e42"}, seedling:{rows:["v","Y"],color:"#8bea72"}, rootspire:{rows:["*","Y","Y"],color:"#4dbb67"}
 };
+function rand(){rngState=(rngState*1664525+1013904223)>>>0;return rngState/4294967296}
+function hashNoise(x,y){let n=(x*374761393+y*668265263+worldSeed*69069)>>>0;n=(n^(n>>13))*1274126177;return((n^(n>>16))>>>0)/4294967295}
+function setTile(x,y,v){if(x>0&&y>0&&x<MAPW-1&&y<MAPH-1)MAP[y][x]=v}
+function roadLine(x0,y0,x1,y1){let x=x0,y=y0;while(x!==x1||y!==y1){GROUND[y][x]="r";if(x!==x1)x+=Math.sign(x1-x);else y+=Math.sign(y1-y)}GROUND[y1][x1]="r"}
+function stampPrefab(name,ox,oy){const p=PREFABS[name];p.forEach((row,y)=>[...row].forEach((v,x)=>{if(v!==".")setTile(ox+x,oy+y,Number(v))}))}
+function stampStructure(type,ox,oy,settlementId){
+  const bp=BUILDING_BLUEPRINTS[type],id=STRUCTURES.length;
+  const structure={id,type,race:bp.race,x:ox,y:oy,w:bp.layout[0].length,h:bp.layout.length,settlementId,condition:100};STRUCTURES.push(structure);
+  bp.layout.forEach((row,ly)=>[...row].forEach((symbol,lx)=>{
+    if(symbol===".")return;const x=ox+lx,y=oy+ly;if(x<=0||y<=0||x>=MAPW-1||y>=MAPH-1)return;
+    MAP[y][x]=bp.material;const ridge=1-Math.abs(lx-(bp.layout[0].length-1)/2)/Math.max(1,bp.layout[0].length/2);
+    HEIGHTS[y][x]=bp.height+ridge*.25;CELL_META[y][x]={structureId:id,feature:symbol==="#"?null:symbol,roof:bp.roof,race:bp.race};
+  }));return structure;
+}
+function addNpc(archetype,x,y,homeX,homeY,race="human",settlementId="hearthmere"){
+  const npc={...archetype,id:"person-"+(PEOPLE.length+1),race,settlementId,x:x+.5,y:y+.5,homeX:homeX+.5,homeY:homeY+.5,targetX:x+.5,targetY:y+.5,phase:rand()*10,type:race==="diligy"?"diligy":"npc"};
+  NPCS.push(npc);PEOPLE.push(npc);SPRITES.push(npc);return npc;
+}
+function generateWorld(seed=worldSeed){
+  worldSeed=seed>>>0;rngState=worldSeed;localStorage.setItem("lokrealm-seed",worldSeed);
+  inventory.wood=0;inventory.coin=3;playerHold={claimed:false,x:null,y:null,name:"Freehold",structures:0,woodSpent:0,chunkKey:"0,0"};
+  MAP=Array.from({length:MAPH},(_,y)=>Array.from({length:MAPW},(_,x)=>(x===0||y===0||x===MAPW-1||y===MAPH-1)?1:0));
+  HEIGHTS=Array.from({length:MAPH},()=>Array(MAPW).fill(0));
+  CELL_META=Array.from({length:MAPH},()=>Array(MAPW).fill(null));
+  GROUND=Array.from({length:MAPH},(_,y)=>Array.from({length:MAPW},(_,x)=>{
+    const broad=hashNoise(Math.floor(x/5),Math.floor(y/5)),fine=hashNoise(x,y);
+    if(broad<.11&&Math.hypot(x-24,y-24)>13)return "w"; // small seeded ponds/streams
+    if(broad>.72)return "f";
+    if(fine<.17)return "m";
+    return fine>.84?"d":"g";
+  }));SPRITES=[];NPCS=[];PEOPLE=[];STRUCTURES=[];SETTLEMENTS=[];FACTIONS=[];simulationDay=1;
+  // Keep the settlement legible and dry; the surrounding land remains seeded.
+  for(let y=12;y<=36;y++)for(let x=12;x<=36;x++)GROUND[y][x]="g";
+  // Crossroads establish a readable village spine; branches vary by seed.
+  roadLine(3,24,44,24);roadLine(24,3,24,44);roadLine(24,24,38,10);roadLine(24,24,10,36);
+  SETTLEMENTS.push({id:"hearthmere",name:"Hearthmere",race:"human",kind:"crossroads",x:24,y:24,stage:1,adults:12,children:4,households:6,
+    resources:{food:68,water:92,wood:34,stone:18,coin:26},capacity:{housing:22,safety:66,care:55},growth:18,history:["Founded beside the old crossroad."]});
+  SETTLEMENTS.push({id:"verdanthold",name:"Verdanthold",race:"diligy",kind:"sunGrove",x:39,y:9,stage:1,mature:9,seedlings:3,helpers:7,
+    resources:{water:84,nutrients:72,light:80,livingWood:24},capacity:{rootLinks:68,safety:52,nursery:18},growth:31,history:["The first roots joined beneath the eastern hill."]});
+  FACTIONS.push({id:"hearthmere-freefolk",name:"Hearthmere Freefolk",race:"human",settlementIds:["hearthmere"],treasury:26,relation:{"verdant-covenant":22}});
+  FACTIONS.push({id:"verdant-covenant",name:"Verdant Covenant",race:"diligy",settlementIds:["verdanthold"],treasury:14,relation:{"hearthmere-freefolk":22}});
+  stampStructure("cottage",14,18,"hearthmere");stampStructure("longhouse",28,18,"hearthmere");
+  stampStructure("tavern",16,28,"hearthmere");stampStructure("cottage",29,28,"hearthmere");
+  stampStructure("watchtower",26,13,"hearthmere");
+  stampPrefab("well",22,22);SPRITES.push({x:23.5,y:23.5,type:"well",solid:true});
+  SPRITES.push({x:18.5,y:27.5,type:"chimney",scale:1.1},{x:27.5,y:13.5,type:"banner",scale:1.05});
+  // Diligy architecture is cultivated around a Grove Heart, not laid in a rigid street grid.
+  for(let y=4;y<=15;y++)for(let x=34;x<=45;x++)if(GROUND[y][x]==="w")GROUND[y][x]="m";
+  roadLine(38,10,44,10);stampStructure("groveHeart",37,7,"verdanthold");
+  stampStructure("growthPod",33,11,"verdanthold");stampStructure("sunCanopy",41,12,"verdanthold");
+  SPRITES.push({x:39.5,y:6.5,type:"rootspire",solid:true,scale:1.4},{x:35.5,y:10.5,type:"seedling",scale:.75},{x:43.5,y:11.5,type:"seedling",scale:.7});
+  // The original maze survives as a named landmark, separated from town.
+  stampPrefab("maze",4,4);SPRITES.push({x:8.5,y:14.5,type:"sign",label:"Whisper Maze"});
+  for(let y=2;y<MAPH-2;y++)for(let x=2;x<MAPW-2;x++){
+    const ground=GROUND[y][x],n=hashNoise(x,y),farFromTown=Math.hypot(x-24,y-24)>=11;
+    if(MAP[y][x]||ground==="r"||!farFromTown)continue;
+    if(ground==="w"){if(n>.56)SPRITES.push({x:x+.5,y:y+.5,type:"reed",scale:.75});continue}
+    if(ground==="f"&&n>.42){
+      const types=["pine","oak","birch","tree"],type=types[Math.floor(hashNoise(x+61,y+9)*types.length)];
+      SPRITES.push({x:x+.5,y:y+.5,type,solid:true,hp:3,scale:.95+hashNoise(x+7,y+17)*.45,wind:hashNoise(x+3,y+13)*6.28});
+    }else if(n>.81&&ground!=="m"){
+      SPRITES.push({x:x+.5,y:y+.5,type:"bush",solid:false,scale:.6+hashNoise(x,y+22)*.45,wind:hashNoise(x+5,y)*6.28});
+    }else if(n<.075||ground==="m"&&n<.27){
+      SPRITES.push({x:x+.5,y:y+.5,type:"flower",scale:.5+hashNoise(x+11,y)*.45,wind:hashNoise(x,y+11)*6.28});
+    }else if(n>.76&&n<.79){
+      SPRITES.push({x:x+.5,y:y+.5,type:"rock",scale:.55+hashNoise(x+20,y)*.35});
+    }
+  }
+  addNpc(NPC_ARCHETYPES[0],21,26,21,26);addNpc(NPC_ARCHETYPES[1],27,26,27,26);
+  addNpc(NPC_ARCHETYPES[2],25,20,25,20);addNpc(NPC_ARCHETYPES[3],24,27,24,27);
+  addNpc(DILIGY_ARCHETYPES[0],39,10,39,10,"diligy","verdanthold");
+  addNpc(DILIGY_ARCHETYPES[1],35,13,35,13,"diligy","verdanthold");
+  addNpc(DILIGY_ARCHETYPES[2],43,13,43,13,"diligy","verdanthold");
+  // A shallow-water layer sits above terrain. It is intentionally small and
+  // deterministic: a browser-friendly sandbox now, with room for erosion later.
+  ELEVATION=Array.from({length:MAPH},(_,y)=>Array.from({length:MAPW},(_,x)=>.08+hashNoise(Math.floor(x/4),Math.floor(y/4))*.68+hashNoise(x+47,y+19)*.11));
+  BASE_GROUND=GROUND.map(row=>row.slice());
+  WATER=Array.from({length:MAPH},(_,y)=>Array.from({length:MAPW},(_,x)=>BASE_GROUND[y][x]==="w"?.46:0));
+  WATER_SOURCES=Array.from({length:MAPH},(_,y)=>Array.from({length:MAPW},(_,x)=>BASE_GROUND[y][x]==="w"&&hashNoise(x+131,y+71)>.58));
+  const saved=localStorage.getItem("lokrealm-world-"+worldSeed);if(saved)try{const d=JSON.parse(saved);if(d.map)MAP=d.map;if(d.ground)GROUND=d.ground;if(d.baseGround)BASE_GROUND=d.baseGround;if(d.elevation)ELEVATION=d.elevation;if(d.water)WATER=d.water;if(d.waterSources)WATER_SOURCES=d.waterSources;if(d.heights)HEIGHTS=d.heights;if(d.cellMeta)CELL_META=d.cellMeta;if(d.structures)STRUCTURES=d.structures;if(d.settlements)SETTLEMENTS=d.settlements;if(d.factions)FACTIONS=d.factions;if(d.playerHold)playerHold=d.playerHold;if(d.simulationDay)simulationDay=d.simulationDay;if(d.wood!==undefined)inventory.wood=d.wood;if(d.coin!==undefined)inventory.coin=d.coin}catch(e){}
+  player.x=24.5;player.y=25.5;player.angle=-Math.PI/2;refreshUI();renderSettlementLedger();
+}
+function tileAt(x,y){const xi=Math.floor(x),yi=Math.floor(y);if(xi<0||yi<0||xi>=MAPW||yi>=MAPH)return 1;return Number(MAP[yi][xi])||0}
 
 // ---------------- CHARACTER PALETTES ----------------
 const WALL_SHADES = ["#", "%", "*", "+", "=", "-", ":", "."]; // near -> far
 const FLOOR_CHARS = [",", ".", "`", " "];
 const SKY_CHAR = " ";
+const TERRAIN = {
+  g:{color:"#627f45",chars:[",",".","`"," "]}, // grassland
+  f:{color:"#466f3e",chars:[";",",","."," "]}, // forest floor
+  m:{color:"#789354",chars:["'",",","."," "]}, // flower meadow
+  d:{color:"#7e6845",chars:[";",".","`"," "]}, // worn earth
+  w:{color:"#3e7892",chars:["~","~","-"," "]}, // water / stream
+  r:{color:"#b18c58",chars:["=","·","."," "]}  // road
+};
 
 function shadeIndex(dist, maxDist, levels) {
   const t = Math.min(1, dist / maxDist);
@@ -214,17 +381,29 @@ function darken(hex, factor) {
 }
 
 // ---------------- PLAYER ----------------
-const player = { x: 2.5, y: 1.5, angle: 0, pitch: 0 };
+const player = { x: 24.5, y: 25.5, angle: -Math.PI/2, pitch: 0 };
+let paused=true, editorTool="claim", toastTimer=0, worldMinutes=8*60;
+let cinematicSurfaces=localStorage.getItem("lokrealm-cinematic-surfaces")!=="off";
 
 // ---------------- INPUT ----------------
 const keys = {};
-window.addEventListener("keydown", e => { keys[e.key.toLowerCase()] = true; });
+window.addEventListener("keydown", e => {
+  const k=e.key.toLowerCase();keys[k]=true;
+  if(e.repeat)return;
+  if(k==="f"||k===" ")interact();
+  if(k==="i")togglePanel("inventory");
+  if(k==="m")togglePanel("map-panel",true);
+  if(k==="j")openSettlementLedger();
+  if(k==="p"||k==="escape")togglePause();
+  if(k==="tab"){e.preventDefault();openEditor()}
+});
 window.addEventListener("keyup",   e => { keys[e.key.toLowerCase()] = false; });
 
 const screenEl = document.getElementById("screen");
 const isTouchDevice = ("ontouchstart" in window) || navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches;
 if (!isTouchDevice) {
-  document.body.addEventListener("click", () => {
+  document.body.addEventListener("click", e => {
+    if(e.target.closest("button,.panel"))return;
     screenEl.requestPointerLock && screenEl.requestPointerLock();
   });
 }
@@ -277,7 +456,7 @@ function onTouchStart(e) {
   releaseStaleTouches(e);
   debugTouchStarts++;
   for (const t of e.changedTouches) {
-    if (t.target.closest("#gyro-btn, #invert-gyro-btn")) continue;
+    if (t.target.closest("#gyro-btn, #invert-gyro-btn, #map-btn, #pack-btn, #realm-btn, #pause-btn, #settings-btn, .panel")) continue;
     if (t.clientX < window.innerWidth / 2) {
       if (joystickTouchId !== null) continue;
       joystickTouchId = t.identifier;
@@ -378,12 +557,211 @@ gyroBtn.addEventListener("click", () => {
   }
 });
 
+// ---------------- GAMEPLAY / UI ----------------
+const $=id=>document.getElementById(id);
+function refreshUI(){
+  $("wood-count").textContent=inventory.wood;$("coin-count").textContent=inventory.coin;
+  const hold=$("freehold-status");if(hold)hold.textContent=playerHold.claimed?`${playerHold.structures} built`:"unclaimed";
+  const status=$("build-status");if(status)status.textContent=playerHold.claimed?`${playerHold.name} · ${inventory.wood} wood in stockpile · ${playerHold.structures} structures in chunk ${playerHold.chunkKey}`:`Unclaimed land · ${inventory.wood}/4 wood needed for a Claim Post`;
+}
+function showToast(message){const el=$("toast");el.textContent=message;el.classList.remove("hidden");clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.add("hidden"),1800)}
+function togglePanel(id,redraw=false){$(id).classList.toggle("hidden");if(redraw&&!$(id).classList.contains("hidden"))drawMap()}
+function closeOverlays(){["dialogue","inventory","editor","settlements-panel","settings-panel"].forEach(id=>$(id).classList.add("hidden"))}
+function syncPauseButton(){const b=$("pause-btn");if(b)b.textContent=paused?"▶ RESUME":"Ⅱ PAUSE"}
+function syncCinematicControl(){const b=$("cinematic-toggle");if(b)b.textContent=cinematicSurfaces?"On":"Off";const mode=$("surface-mode");if(mode)mode.textContent=cinematicSurfaces?"ON":"CLASSIC"}
+let settingsReturnToMenu=true;
+function openSettings(fromMenu=false){
+  settingsReturnToMenu=fromMenu;
+  if(fromMenu)$("main-menu").classList.add("hidden");
+  else{paused=true;syncPauseButton()}
+  $("settings-panel").classList.remove("hidden");
+  syncCinematicControl();
+}
+function togglePause(){paused=!paused;closeOverlays();$("main-menu").classList.toggle("hidden",!paused);syncPauseButton();if(!paused)showToast("Realm resumed")}
+$('pause-btn').onclick=e=>{e.stopPropagation();togglePause()};
+$('settings-btn').onclick=e=>{e.stopPropagation();openSettings(!$('main-menu').classList.contains('hidden'))};
+$('map-btn').onclick=e=>{e.stopPropagation();togglePanel('map-panel',true)};
+$('pack-btn').onclick=e=>{e.stopPropagation();togglePanel('inventory')};
+$('realm-btn').onclick=e=>{e.stopPropagation();openSettlementLedger()};
+$('build-open').onclick=()=>{closeOverlays();openEditor()};
+$('cinematic-toggle').onclick=()=>{cinematicSurfaces=!cinematicSurfaces;localStorage.setItem("lokrealm-cinematic-surfaces",cinematicSurfaces?"on":"off");syncCinematicControl();showToast(cinematicSurfaces?"Cinematic Surfaces enabled":"Classic Surface mode enabled")};
+$('settings-close').onclick=()=>{const returnToMenu=settingsReturnToMenu;$('settings-panel').classList.add('hidden');if(returnToMenu)$('main-menu').classList.remove('hidden');else{paused=false;syncPauseButton();showToast('Realm resumed')}};
+document.querySelectorAll("[data-menu]").forEach(btn=>btn.onclick=()=>{
+  const action=btn.dataset.menu;
+  if(action==="new")generateWorld((Math.random()*2147483647)|0);
+  if(action==="settings"){openSettings(true);return}
+  paused=false;$("main-menu").classList.add("hidden");syncPauseButton();showToast("Seed "+worldSeed+" · follow the road to the village");
+});
+function nearestSprite(max=1.65){let best=null,bd=max;for(const s of SPRITES){const d=Math.hypot(s.x-player.x,s.y-player.y);if(d<bd){best=s;bd=d}}return best}
+function interact(){
+  if(paused)return;const tx=Math.floor(player.x+Math.cos(player.angle)*1.15),ty=Math.floor(player.y+Math.sin(player.angle)*1.15),cell=CELL_META[ty]&&CELL_META[ty][tx];
+  if(cell&&cell.feature==="C"){showToast(`${playerHold.name} claim · ${playerHold.structures} structures built`);return}
+  if(cell&&cell.feature==="D"){const structure=STRUCTURES.find(x=>x.id===cell.structureId),home=structure&&SETTLEMENTS.find(x=>x.id===structure.settlementId);if(structure){showToast(`${structure.type} · ${home?home.name:playerHold.name}`);return}}
+  const s=nearestSprite();if(!s){showToast("Nothing within reach");return}
+  if(["tree","pine","oak","birch","autumn"].includes(s.type)){
+    s.hp=(s.hp||3)-1;showToast(s.hp>0?"Chop! The trunk holds.":"Tree felled · +3 wood");
+    if(s.hp<=0){s.type="stump";s.solid=false;inventory.wood+=3;refreshUI()}return;
+  }
+  if(s.type==="npc"||s.type==="diligy"){openDialogue(s);return}
+  if(s.type==="sign"){showToast(s.label+" — landmark recorded");return}
+  if(s.type==="well")showToast("The village well reflects a pale sky.");
+  if(s.type==="rootspire"){openSettlementLedger();return}
+  if(s.type==="seedling"){showToast("A young Diligy reaches toward the shared light.");return}
+}
+$("action-btn").onclick=e=>{e.stopPropagation();interact()};
+function openDialogue(npc){
+  paused=true;syncPauseButton();const box=$("dialogue");box.classList.remove("hidden");box.querySelector(".name").textContent=npc.name+" · "+npc.role;
+  box.querySelector(".text").textContent=npc.lines[Math.floor(worldMinutes/180)%npc.lines.length];
+  const choices=box.querySelector(".choices");choices.innerHTML="";
+  [["Ask about work",()=>{box.querySelector(".text").textContent=npc.quest}],
+   [npc.race==="diligy"?"Offer 5 wood":"Trade 5 wood",()=>{if(inventory.wood>=5){inventory.wood-=5;inventory.coin+=8;const home=SETTLEMENTS.find(s=>s.id===npc.settlementId);if(home&&home.race==="diligy"){home.resources.livingWood+=5;home.growth+=8;renderSettlementLedger()}refreshUI();showToast(npc.race==="diligy"?"The grove welcomes the timber · +8 coin":"Trade complete · +8 coin")}else showToast("You need 5 wood")}],
+   ["Goodbye",()=>{box.classList.add("hidden");paused=false;syncPauseButton()}]].forEach(([label,fn])=>{const b=document.createElement("button");b.textContent=label;b.onclick=fn;choices.appendChild(b)});
+}
+function saveWorld(silent=false){localStorage.setItem("lokrealm-world-"+worldSeed,JSON.stringify({version:4,seed:worldSeed,map:MAP,ground:GROUND,baseGround:BASE_GROUND,elevation:ELEVATION,water:WATER,waterSources:WATER_SOURCES,heights:HEIGHTS,cellMeta:CELL_META,structures:STRUCTURES,settlements:SETTLEMENTS,factions:FACTIONS,playerHold,simulationDay,wood:inventory.wood,coin:inventory.coin}));if(!silent)showToast("Realm saved locally")}
+function drawMap(){
+  const lines=[];for(let y=0;y<MAPH;y+=2){let row="";for(let x=0;x<MAPW;x++){
+    if(Math.floor(player.x)===x&&Math.floor(player.y/2)===Math.floor(y/2)){row+="@";continue}
+    if(playerHold.claimed&&playerHold.x===x&&Math.floor(playerHold.y/2)===Math.floor(y/2)){row+="P";continue}
+    const settlement=SETTLEMENTS.find(s=>s.x===x&&Math.floor(s.y/2)===Math.floor(y/2));
+    const npc=NPCS.find(n=>Math.floor(n.x)===x&&Math.floor(n.y/2)===Math.floor(y/2));
+    const tree=SPRITES.some(s=>["tree","pine","oak","birch","autumn"].includes(s.type)&&Math.floor(s.x)===x&&Math.floor(s.y/2)===Math.floor(y/2));
+    row+=settlement?(settlement.race==="human"?"H":"D"):npc?(npc.race==="diligy"?"d":"n"):MAP[y][x]?"#":GROUND[y][x]==="r"?"=":GROUND[y][x]==="w"?"~":tree?"^":".";
+  }lines.push(row)}$("map-display").textContent=lines.join("\n")}
+function openEditor(){paused=true;syncPauseButton();$("editor").classList.remove("hidden");$("map-panel").classList.remove("hidden");refreshUI();drawMap()}
+const toolDefs=[["claim","Claim Post · 4w"],["freeholdCottage","Cottage · 8w"],["palisade","Palisade · 2w"],["roadBuild","Road · 1w"],[0,"Erase"],[1,"Hedge"],[2,"Timber"],[3,"Stone"],[4,"Keep"],[5,"Fence"],["tree","Tree"],["spring","Water Spring"],["raise","Raise Land"]];
+toolDefs.forEach(([v,label])=>{const b=document.createElement("button");b.textContent=label;b.onclick=()=>{editorTool=v;document.querySelectorAll("#editor-tools button").forEach(x=>x.classList.remove("active"));b.classList.add("active")};$("editor-tools").appendChild(b)});
+$("editor-tools").children[0].classList.add("active");
+function buildingFits(type,ox,oy){const bp=BUILDING_BLUEPRINTS[type];if(!bp)return false;for(let ly=0;ly<bp.layout.length;ly++)for(let lx=0;lx<bp.layout[0].length;lx++){const x=ox+lx,y=oy+ly;if(x<=0||y<=0||x>=MAPW-1||y>=MAPH-1||MAP[y][x]||GROUND[y][x]==="w"||WATER[y][x]>.12||SPRITES.some(s=>s.solid&&Math.floor(s.x)===x&&Math.floor(s.y)===y))return false}return true}
+function buildPlayerStructure(type,x,y){
+  if(type!=="claimPost"&&!playerHold.claimed){showToast("Place a Claim Post first");return}
+  if(type==="claimPost"&&playerHold.claimed){showToast("This realm already has a Freehold");return}
+  const cost=BUILD_COSTS[type]||0;if(inventory.wood<cost){showToast(`Need ${cost} wood · you have ${inventory.wood}`);return}
+  if(!buildingFits(type,x,y)){showToast("Need clear, dry ground for that blueprint");return}
+  const structure=stampStructure(type,x,y,"freehold");structure.owner="freehold";structure.chunkKey="0,0";
+  inventory.wood-=cost;playerHold.woodSpent+=cost;
+  if(type==="claimPost"){playerHold.claimed=true;playerHold.x=x;playerHold.y=y;playerHold.name="Freehold"}else playerHold.structures++;
+  refreshUI();saveWorld(true);drawMap();showToast(type==="claimPost"?"Freehold claimed · construction unlocked":`${type.replace(/([A-Z])/g," $1")} raised`);
+}
+function buildRoad(x,y){
+  if(!playerHold.claimed){showToast("Claim a Freehold before laying roads");return}
+  if(inventory.wood<BUILD_COSTS.roadBuild){showToast("Need 1 wood for a road section");return}
+  if(x<=0||y<=0||x>=MAPW-1||y>=MAPH-1||MAP[y][x]||GROUND[y][x]==="w"||WATER[y][x]>.12||SPRITES.some(s=>s.solid&&Math.floor(s.x)===x&&Math.floor(s.y)===y)){showToast("Road needs clear, dry ground");return}
+  GROUND[y][x]="r";BASE_GROUND[y][x]="r";inventory.wood--;playerHold.woodSpent++;refreshUI();saveWorld(true);drawMap();showToast("Road section laid");
+}
+function editMapAt(x,y){
+  if(editorTool==="claim")return buildPlayerStructure("claimPost",x,y);
+  if(editorTool==="freeholdCottage"||editorTool==="palisade")return buildPlayerStructure(editorTool,x,y);
+  if(editorTool==="roadBuild")return buildRoad(x,y);
+  if(editorTool==="tree"){MAP[y][x]=0;SPRITES.push({x:x+.5,y:y+.5,type:"tree",solid:true,hp:3})}else if(editorTool==="spring"){MAP[y][x]=0;BASE_GROUND[y][x]="g";GROUND[y][x]="w";WATER[y][x]=.8;WATER_SOURCES[y][x]=true}else if(editorTool==="raise"){ELEVATION[y][x]=Math.min(1.25,ELEVATION[y][x]+.18);if(WATER[y][x]>.1)WATER[y][x]=Math.max(0,WATER[y][x]-.08)}else MAP[y][x]=Number(editorTool);drawMap();
+}
+$("map-display").onclick=e=>{if($("editor").classList.contains("hidden"))return;const r=e.currentTarget.getBoundingClientRect(),x=Math.max(0,Math.min(MAPW-1,Math.floor((e.clientX-r.left)/r.width*MAPW))),y=Math.max(0,Math.min(MAPH-1,Math.floor((e.clientY-r.top)/r.height*MAPH)));editMapAt(x,y)};
+$("editor-save").onclick=()=>saveWorld();$("editor-close").onclick=()=>{$("editor").classList.add("hidden");paused=false;syncPauseButton()};
+$("editor-export").onclick=()=>{const blob=new Blob([JSON.stringify({format:"LokRealmWorld/4",seed:worldSeed,map:MAP,ground:GROUND,baseGround:BASE_GROUND,elevation:ELEVATION,water:WATER,waterSources:WATER_SOURCES,heights:HEIGHTS,cellMeta:CELL_META,structures:STRUCTURES,settlements:SETTLEMENTS,factions:FACTIONS,playerHold,simulationDay,prefabs:Object.keys(PREFABS),buildingBlueprints:Object.keys(BUILDING_BLUEPRINTS)},null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="lokrealm-"+worldSeed+".json";a.click();URL.revokeObjectURL(a.href)};
+
+// ---------------- SETTLEMENT / POPULATION SIMULATION ----------------
+function settlementPopulation(s){return s.race==="human"?s.adults+s.children:s.mature+s.seedlings}
+function settlementStageFor(s){const thresholds=RACES[s.race].thresholds,pop=settlementPopulation(s);let stage=0;for(let i=0;i<thresholds.length;i++)if(pop>=thresholds[i])stage=i;return stage}
+function clampResource(value,max=999){return Math.max(0,Math.min(max,value))}
+function conditionRatio(...values){return Math.max(0,Math.min(1,...values))}
+function expandSettlement(s,newStage){
+  if(newStage<=s.stage)return;s.stage=newStage;const label=RACES[s.race].stages[newStage];s.history.unshift("Day "+simulationDay+": became a "+label+".");
+  if(s.race==="human"){
+    if(newStage===2){stampStructure("gatehouse",22,36,s.id);s.capacity.safety+=16;s.capacity.housing+=4}
+    if(newStage===3){stampStructure("longhouse",7,26,s.id);s.capacity.housing+=10}
+  }else{
+    if(newStage===2){stampStructure("rootHall",37,16,s.id);s.capacity.rootLinks+=20;s.capacity.nursery+=8}
+    if(newStage===3){stampStructure("sunCanopy",30,7,s.id);s.resources.light+=12}
+  }
+  showToast(s.name+" has grown into a "+label);
+}
+function simulateHumanDay(s){
+  const pop=s.adults+s.children,workers=Math.max(1,s.adults-Math.ceil(s.children*.25));
+  const bonuses=SETTLEMENT_KINDS.human[s.kind].bonuses;
+  s.resources.food=clampResource(s.resources.food+workers*.75*(bonuses.food||1)-pop*.58);
+  s.resources.water=clampResource(s.resources.water+18-pop*.34);
+  s.resources.wood=clampResource(s.resources.wood+workers*.22);
+  const housing=s.capacity.housing/pop,food=s.resources.food/Math.max(1,pop*2),water=s.resources.water/Math.max(1,pop),safety=s.capacity.safety/100,care=s.capacity.care/100;
+  const familyReadiness=conditionRatio(housing,food,water,safety,care);
+  s.growth+=familyReadiness*(1.2+s.households*.08);
+  s.maturation=(s.maturation||0)+s.children*.018;
+  if(s.maturation>=1&&s.children>0){s.maturation-=1;s.children--;s.adults++;s.history.unshift("Day "+simulationDay+": a young resident came of age.")}
+  if(s.growth>=100&&s.capacity.housing>pop){s.growth-=100;s.children++;s.history.unshift("Day "+simulationDay+": a supported household welcomed a child.")}
+  if(simulationDay%12===0&&familyReadiness>.82&&s.capacity.housing>pop+1){s.adults++;s.history.unshift("Day "+simulationDay+": a traveler settled in town.")}
+}
+function simulateDiligyDay(s){
+  const pop=s.mature+s.seedlings,helpers=Math.min(s.mature,s.helpers),networkBonus=1+Math.min(.65,helpers*.055);
+  const bonuses=SETTLEMENT_KINDS.diligy[s.kind].bonuses;
+  s.resources.light=clampResource(s.resources.light+12*(bonuses.light||1)-pop*.32,120);
+  s.resources.water=clampResource(s.resources.water+10-pop*.42,120);
+  s.resources.nutrients=clampResource(s.resources.nutrients+5+s.mature*.18-pop*.36,120);
+  s.capacity.rootLinks=clampResource(s.capacity.rootLinks+s.mature*.16,100);
+  const groveHealth=conditionRatio(s.resources.light/(pop*1.3),s.resources.water/pop,s.resources.nutrients/pop,s.capacity.rootLinks/70,s.capacity.safety/55);
+  s.growth+=helpers*.43*networkBonus*groveHealth*(bonuses.growth||1);
+  s.maturation=(s.maturation||0)+s.seedlings*.035*networkBonus*groveHealth;
+  if(s.maturation>=1&&s.seedlings>0){s.maturation-=1;s.seedlings--;s.mature++;s.helpers++;s.history.unshift("Day "+simulationDay+": a seedling joined the mature root-network.")}
+  if(s.growth>=100&&s.capacity.nursery>s.seedlings){s.growth-=100;s.seedlings++;s.history.unshift("Day "+simulationDay+": the Growth Circle raised a new seedling together.")}
+}
+function simulateRelations(){
+  if(simulationDay%7!==0)return;const human=SETTLEMENTS.find(s=>s.race==="human"),diligy=SETTLEMENTS.find(s=>s.race==="diligy");if(!human||!diligy)return;
+  if(human.resources.wood>=2){human.resources.wood-=2;human.resources.food+=4;diligy.resources.livingWood+=2;diligy.resources.nutrients+=3;
+    FACTIONS[0].relation[FACTIONS[1].id]=Math.min(100,(FACTIONS[0].relation[FACTIONS[1].id]||0)+1);FACTIONS[1].relation[FACTIONS[0].id]=FACTIONS[0].relation[FACTIONS[1].id];
+    human.history.unshift("Day "+simulationDay+": exchanged timber for Diligy-grown medicine.");diligy.history.unshift("Day "+simulationDay+": shared medicine for reclaimed timber.")}
+}
+function simulateSettlementDay(){
+  simulationDay++;for(const s of SETTLEMENTS){if(s.race==="human")simulateHumanDay(s);else simulateDiligyDay(s);expandSettlement(s,settlementStageFor(s));s.history=s.history.slice(0,8)}simulateRelations();
+  renderSettlementLedger();saveWorld(true);
+}
+function meter(value,color){return `<div class="meter"><i style="width:${Math.max(0,Math.min(100,value))}%;background:${color}"></i></div>`}
+function renderSettlementLedger(){
+  if(!$('settlement-list'))return;const relation=FACTIONS.length>1?(FACTIONS[0].relation[FACTIONS[1].id]||0):0;$('realm-relations').innerHTML=`<p>Day ${simulationDay} · Human–Diligy relations: <b>${relation<0?"Hostile":relation<25?"Cautious":relation<60?"Cooperative":"Allied"}</b> (${relation})</p>`;$('settlement-list').innerHTML=SETTLEMENTS.map(s=>{
+    const cfg=RACES[s.race],pop=settlementPopulation(s),stage=cfg.stages[s.stage],kind=SETTLEMENT_KINDS[s.race][s.kind].name,people=s.race==="human"?`${s.adults} adults · ${s.children} children · ${s.households} households`:`${s.mature} mature · ${s.seedlings} seedlings · ${s.helpers} linked helpers`;
+    const resources=Object.entries(s.resources).slice(0,4).map(([k,v])=>`<span><b>${Math.floor(v)}</b>${k}</span>`).join("");
+    const need=s.race==="human"?`Housing ${s.capacity.housing} · Safety ${s.capacity.safety}% · Care ${s.capacity.care}%`:`Root links ${Math.floor(s.capacity.rootLinks)}% · Nursery ${s.capacity.nursery} · Safety ${s.capacity.safety}%`;
+    return `<article class="settlement-card ${s.race}"><span class="race-tag">${cfg.name}</span><h3>${s.name} · ${stage}</h3><div>${kind} · ${pop} residents</div><small>${people}</small>${meter(s.growth,cfg.color)}<small>Next growth cycle ${Math.floor(s.growth)}%</small><div class="stat-grid">${resources}</div><p>${need}</p><small>${s.history[0]||"Its story is beginning."}</small></article>`
+  }).join("")
+}
+function openSettlementLedger(){paused=true;syncPauseButton();renderSettlementLedger();$('settlements-panel').classList.remove('hidden')}
+$('advance-day').onclick=simulateSettlementDay;$('settlements-close').onclick=()=>{$('settlements-panel').classList.add('hidden');paused=false;syncPauseButton()};
+
+function updateNpcs(dt){
+  const previousMinutes=worldMinutes;worldMinutes=(worldMinutes+dt*2)%1440;if(worldMinutes<previousMinutes)simulateSettlementDay();
+  for(const n of NPCS){n.phase-=dt;if(n.phase<=0){n.phase=3+rand()*5;const night=worldMinutes<360||worldMinutes>1200;n.targetX=night?n.homeX:n.homeX+(rand()*8-4);n.targetY=night?n.homeY:n.homeY+(rand()*8-4)}
+    const dx=n.targetX-n.x,dy=n.targetY-n.y,d=Math.hypot(dx,dy);if(d>.15){const nx=n.x+dx/d*dt*.42,ny=n.y+dy/d*dt*.42;if(tileAt(nx,ny)===0){n.x=nx;n.y=ny}else n.phase=0}}
+}
+
+// Water moves as a shallow height field: each open cell shares water with
+// lower neighboring cells. This is intentionally a stable, capped simulation
+// for a 48×48 mobile world—not a GPU fluid solver like Flo's Vulkan example.
+function simulateWater(dt){
+  if(!waterEnabled)return;waterAccumulator+=dt;const step=.12;
+  while(waterAccumulator>=step){waterAccumulator-=step;const delta=Array.from({length:MAPH},()=>Array(MAPW).fill(0));
+    for(let y=1;y<MAPH-1;y++)for(let x=1;x<MAPW-1;x++){
+      const amount=WATER[y][x]||0;if(amount<.004||tileAt(x+.5,y+.5)>0)continue;
+      if(WATER_SOURCES[y][x])delta[y][x]+=.026;
+      const surface=ELEVATION[y][x]+amount;
+      for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+        const nx=x+dx,ny=y+dy;if(tileAt(nx+.5,ny+.5)>0)continue;
+        const drop=surface-(ELEVATION[ny][nx]+(WATER[ny][nx]||0));if(drop<=.025)continue;
+        const flow=Math.min(amount*.22,drop*.18);delta[y][x]-=flow;delta[ny][nx]+=flow;
+      }
+    }
+    for(let y=1;y<MAPH-1;y++)for(let x=1;x<MAPW-1;x++){
+      WATER[y][x]=Math.max(0,Math.min(.95,(WATER[y][x]||0)+delta[y][x]));
+      if(WATER[y][x]>.055)GROUND[y][x]="w";else GROUND[y][x]=BASE_GROUND[y][x];
+    }
+  }
+}
+
 function tryMove(nx, ny) {
-  if (tileAt(nx, player.y) === 0) player.x = nx;
-  if (tileAt(player.x, ny) === 0) player.y = ny;
+  const blocked=(x,y)=>tileAt(x,y)>0||SPRITES.some(s=>s.solid&&Math.hypot(s.x-x,s.y-y)<.42);
+  if (!blocked(nx, player.y)) player.x = nx;
+  if (!blocked(player.x, ny)) player.y = ny;
 }
 
 function update(dt) {
+  if(paused)return;
+  simulateWater(dt);
+  updateNpcs(dt);
   let moveX = 0, moveY = 0;
   const fwdX = Math.cos(player.angle), fwdY = Math.sin(player.angle);
   const rightX = Math.cos(player.angle + Math.PI/2), rightY = Math.sin(player.angle + Math.PI/2);
@@ -447,16 +825,21 @@ function castRay(rayAngle) {
     ? (mapX - player.x + (1 - stepX) / 2) / (dirX || 1e-9)
     : (mapY - player.y + (1 - stepY) / 2) / (dirY || 1e-9);
 
-  return { dist: Math.max(0.0001, Math.abs(perpDist)), side, material };
+  return { dist: Math.max(0.0001, Math.abs(perpDist)), side, material, mapX, mapY };
 }
 
 // ---------------- RENDER ----------------
 function render() {
+  const sceneTime=performance.now()/1000;
+  const sun=Math.max(0,Math.sin(worldMinutes/1440*Math.PI*2-Math.PI/2));
+  const daylight=.2+sun*.8;
+  const skyBase=sun>.18?"#78a9ca":"#303b61";
   const chGrid = new Array(ROWS);
   const colGrid = new Array(ROWS);
   for (let r = 0; r < ROWS; r++) {
-    chGrid[r] = new Array(COLS).fill(SKY_CHAR);
-    colGrid[r] = new Array(COLS).fill("#05070a");
+    const skyChar=r<ROWS*.18?SKY_CHAR:(sun>.22?"·":".");
+    chGrid[r] = new Array(COLS).fill(skyChar);
+    colGrid[r] = new Array(COLS).fill(darken(skyBase,Math.max(0,r/ROWS-.12)*.55));
   }
   const depthBuffer = new Array(COLS).fill(Infinity);
   const horizon = Math.floor(ROWS / 2 + player.pitch);
@@ -465,31 +848,49 @@ function render() {
   for (let col = 0; col < COLS; col++) {
     const cameraX = (2 * col) / COLS - 1;
     const rayAngle = player.angle + Math.atan(cameraX * Math.tan(FOV / 2));
-    const { dist, side, material } = castRay(rayAngle);
+    const { dist, side, material, mapX, mapY } = castRay(rayAngle);
     const correctedDist = dist * Math.cos(rayAngle - player.angle);
     depthBuffer[col] = correctedDist;
 
     const mat = MATERIALS[material] || MATERIALS[1];
-    const wallHeight = Math.min(ROWS, Math.floor((ROWS / (correctedDist + 0.0001)) * mat.height));
+    const meta=CELL_META[mapY]&&CELL_META[mapY][mapX];
+    const surfaceProfile=CINEMATIC_SURFACES[material]||CINEMATIC_SURFACES[1];
+    const rawHeight=HEIGHTS[mapY]&&HEIGHTS[mapY][mapX]||mat.height;
+    // Classic mode preserves low fences/pillars. Cinematic mode gives every
+    // hit a complete shell so the raycaster never exposes the empty backdrop.
+    const cellHeight=cinematicSurfaces?Math.max(.96,rawHeight):rawHeight;
+    const wallHeight = Math.min(ROWS, Math.floor((ROWS / (correctedDist + 0.0001)) * cellHeight));
     const wallTop = Math.max(0, horizon - Math.floor(wallHeight / 2));
     const wallBottom = Math.min(ROWS - 1, horizon + Math.floor(wallHeight / 2));
 
     const shade = shadeIndex(correctedDist, 16, WALL_SHADES.length);
     const wallChar = WALL_SHADES[shade];
     const baseColor = side === 0 ? mat.colorNS : mat.colorEW;
-    const wallColor = darken(baseColor, shade / WALL_SHADES.length * 0.7);
+    const wallColor = darken(baseColor, shade / WALL_SHADES.length * 0.7+(1-daylight)*.34);
 
     for (let row = 0; row < ROWS; row++) {
       if (row < wallTop) {
-        chGrid[row][col] = SKY_CHAR;
+        // Background already carries a time-of-day sky gradient.
       } else if (row <= wallBottom) {
-        chGrid[row][col] = wallChar;
-        colGrid[row][col] = wallColor;
+        const wallT=(row-wallTop)/Math.max(1,wallBottom-wallTop);
+        if(meta&&meta.roof&&wallT<.24){chGrid[row][col]=side===0?"/":"\\";colGrid[row][col]=darken(meta.roof,shade/WALL_SHADES.length*.55+(1-daylight)*.25)}
+        else if(meta&&meta.feature==="D"&&wallT>.35){chGrid[row][col]=wallT<.46?"_":"|";colGrid[row][col]=darken("#593b28",shade/WALL_SHADES.length*.45)}
+        else if(meta&&meta.feature==="W"&&wallT>.32&&wallT<.68){chGrid[row][col]=(Math.floor(sceneTime*1.5+mapX+mapY)%5===0)?"*":"o";colGrid[row][col]=darken("#8fc6d6",(1-daylight)*.35)}
+        else if(cinematicSurfaces&&wallT<.10){chGrid[row][col]=surfaceProfile.cap;colGrid[row][col]=darken(surfaceProfile.color,shade/WALL_SHADES.length*.38+(1-daylight)*.16)}
+        else if(cinematicSurfaces&&wallT<.22){chGrid[row][col]=surfaceProfile.trim;colGrid[row][col]=darken(surfaceProfile.color,shade/WALL_SHADES.length*.5+(1-daylight)*.24)}
+        else if(cinematicSurfaces&&wallT>.85){chGrid[row][col]=surfaceProfile.foundation;colGrid[row][col]=darken(surfaceProfile.color,.28+shade/WALL_SHADES.length*.42+(1-daylight)*.26)}
+        else if(cinematicSurfaces&&((Math.floor(wallT*11)+mapX+mapY)%7===0)){chGrid[row][col]=surfaceProfile.trim;colGrid[row][col]=darken(surfaceProfile.color,.18+shade/WALL_SHADES.length*.5+(1-daylight)*.24)}
+        else{chGrid[row][col]=wallChar;colGrid[row][col]=wallColor}
       } else {
         const floorDepth = row - horizon;
         const fi = Math.min(FLOOR_CHARS.length - 1, Math.floor(floorDepth / 5));
-        chGrid[row][col] = FLOOR_CHARS[FLOOR_CHARS.length - 1 - fi];
-        colGrid[row][col] = darken("#6f5a3f", 0.15 + fi * 0.15);
+        const floorDist=ROWS/Math.max(1,(row-horizon)*1.75);
+        const fx=Math.floor(player.x+Math.cos(rayAngle)*floorDist),fy=Math.floor(player.y+Math.sin(rayAngle)*floorDist);
+        const ground=GROUND[fy]&&GROUND[fy][fx]||"g",terrain=TERRAIN[ground]||TERRAIN.g;
+        let terrainIndex=Math.min(terrain.chars.length-1,Math.floor(floorDepth/5));
+        if(ground==="w")terrainIndex=(terrainIndex+Math.floor(sceneTime*3+fx+fy))%Math.min(3,terrain.chars.length);
+        chGrid[row][col] = terrain.chars[terrainIndex];
+        colGrid[row][col] = darken(terrain.color,0.08+fi*.14+(1-daylight)*.28);
       }
     }
   }
@@ -505,12 +906,14 @@ function render() {
     if (Math.abs(angleTo) > FOV / 1.4) continue; // outside view cone
 
     const screenXNorm = Math.tan(angleTo) / Math.tan(FOV / 2); // -1..1
-    const col = Math.floor(((screenXNorm + 1) / 2) * COLS);
+    const windShift=spr.wind?Math.round(Math.sin(sceneTime*1.6+spr.wind)*Math.min(2,12/(dist+2))):0;
+    const col = Math.floor(((screenXNorm + 1) / 2) * COLS)+windShift;
     if (col < 0 || col >= COLS) continue;
     if (dist >= depthBuffer[col]) continue; // occluded by a wall
 
     const glyph = SPRITE_GLYPHS[spr.type] || SPRITE_GLYPHS.tree;
-    const size = Math.max(1, Math.floor(ROWS / (dist + 0.0001) * 0.5));
+    const spriteColor=spr.color||glyph.color;
+    const size = Math.max(1, Math.floor(ROWS / (dist + 0.0001) * 0.5*(spr.scale||1)));
     const halfW = Math.max(1, Math.floor(size / 3));
     const baseRow = horizon + Math.floor(size / 2);
 
@@ -523,7 +926,7 @@ function render() {
           if (cc < 0 || cc >= COLS) continue;
           if (dist >= depthBuffer[cc]) continue;
           chGrid[row][cc] = glyph.rows[ri];
-          colGrid[row][cc] = darken(glyph.color, Math.min(0.6, dist / 20));
+          colGrid[row][cc] = darken(spriteColor, Math.min(.66,dist/20)+(1-daylight)*.3);
         }
       }
     }
@@ -573,6 +976,7 @@ function loop(now) {
   }
   requestAnimationFrame(loop);
 }
+generateWorld(worldSeed);
 requestAnimationFrame(loop);
 </script>
 </body>
