@@ -128,10 +128,10 @@
 </style>
 </head>
 <body>
-<div id="hud">FPS: <span id="fps">0</span> &nbsp; pos: <span id="pos">-</span> &nbsp; surf: <span id="surface-mode">ON</span></div>
+<div id="hud">FPS: <span id="fps">0</span> &nbsp; pos: <span id="pos">-</span> &nbsp; surf: <span id="surface-mode">ON</span> &nbsp; sprites: <span id="sprite-style">enhanced</span></div>
 <div id="debug-hud" class="touch-ui"></div>
 <pre id="screen"></pre>
-<div id="hint">WASD / Arrows: move &nbsp; Q/E: turn &nbsp; Click + mouse: look</div>
+<div id="hint">WASD / Arrows: move &nbsp; Q/E: turn &nbsp; Click + mouse: look &nbsp; T: sprite style</div>
 <div id="touch-hint" class="touch-ui">Left: move &nbsp; Right: look</div>
 <div id="joystick-base" class="touch-ui"><div id="joystick-nub"></div></div>
 <div id="look-joystick-base" class="touch-ui"><div id="look-joystick-nub"></div></div>
@@ -270,6 +270,162 @@ const SPRITE_GLYPHS = {
   well:{rows:["o","#"],color:"#8aa2a8"}, flower:{rows:["*"],color:"#e276af"}, reed:{rows:["'","|"],color:"#6f9d62"},
   chimney:{rows:["~","#"],color:"#74645b"}, banner:{rows:[">","|"],color:"#c94e42"}, seedling:{rows:["v","Y"],color:"#8bea72"}, rootspire:{rows:["*","Y","Y"],color:"#4dbb67"}
 };
+
+// ---------------- PERSON RIGS (procedural silhouette + view-bucketing) ----------------
+// `npc`/`diligy` sprites (the only sprite types with a face + a role, and the
+// only ones the player asked to look less flat/static) get a shaped rig
+// instead of a flat "o"/"|" glyph. Everything else keeps SPRITE_GLYPHS
+// unchanged — trees etc. already sway with `spr.wind` and don't need a body.
+// A shape is a function that builds a [subRows][cols] grid of palette-key
+// strings (or null = transparent), generated from a few proportions rather
+// than hand-typed ASCII-art rows, so it's guaranteed symmetric at any size.
+function humanoidSilhouette(subRows, cols, opts) {
+  const {
+    headFrac = 0.22, shoulderFrac = 0.6, shoulderWidthFrac = 0.82,
+    waistWidthFrac = 0.46, legGapFrac = 0.16,
+    hasHat = false, hasPack = false, hasSpear = false,
+    hasAxe = false, hasPickaxe = false, hasArmor = false,
+    view = "front", // "front" | "side" | "back" — see viewBucket()
+  } = opts;
+  const grid = [];
+  const midCol = (cols - 1) / 2;
+  const isSide = view === "side";
+  const isBack = view === "back";
+  for (let r = 0; r < subRows; r++) {
+    const t = r / (subRows - 1);
+    const row = new Array(cols).fill(null);
+    if (t < headFrac) {
+      const headT = t / headFrac;
+      const radius = Math.sin(headT * Math.PI) * (cols * 0.24) + 0.55;
+      for (let c = 0; c < cols; c++) if (Math.abs(c - midCol) <= radius) row[c] = "head";
+      if (hasHat && headT < 0.4) {
+        for (let c = 0; c < cols; c++) if (Math.abs(c - midCol) <= radius + 1) row[c] = "hat";
+      }
+    } else if (t < shoulderFrac) {
+      const bodyT = (t - headFrac) / (shoulderFrac - headFrac);
+      let width = ((shoulderWidthFrac - (shoulderWidthFrac - waistWidthFrac) * bodyT) * cols) / 2;
+      if (isSide) width *= 0.65;
+      for (let c = 0; c < cols; c++) if (Math.abs(c - midCol) <= width) row[c] = "body";
+      // A backpack is worn on the back: hidden from the front, wide/centered
+      // from behind, a narrower centered hint from the side.
+      if (hasPack && view !== "front" && bodyT > 0.15 && bodyT < 0.75) {
+        const packWidth = isBack ? width * 0.8 : Math.max(1, width * 0.4);
+        for (let c = 0; c < cols; c++) if (Math.abs(c - midCol) <= packWidth) row[c] = "pack";
+      }
+      if (hasArmor && bodyT > 0.1 && bodyT < 0.55) {
+        const armorWidth = width * 0.7;
+        for (let c = 0; c < cols; c++) if (Math.abs(c - midCol) <= armorWidth) row[c] = "armor";
+      }
+    } else {
+      const legT = (t - shoulderFrac) / (1 - shoulderFrac);
+      const gap = (cols * legGapFrac) / 2;
+      const legWidth = ((waistWidthFrac * cols) / 2 - gap) * (1 - legT * 0.15);
+      for (let c = 0; c < cols; c++) {
+        const d = c - midCol;
+        if (d < 0 && Math.abs(d + gap) <= legWidth) row[c] = "legs";
+        if (d >= 0 && Math.abs(d - gap) <= legWidth) row[c] = "legs";
+      }
+    }
+    // Held tools aren't visible from directly behind.
+    if (hasSpear && !isBack && t < 0.85) row[cols - 1] = "spear";
+    if (hasAxe && !isBack && t > 0.3 && t < 0.6) {
+      const axeT = (t - 0.3) / 0.3;
+      row[cols - 1] = "toolHandle";
+      if (axeT < 0.5 && cols - 2 > midCol) row[cols - 2] = "toolHead";
+    }
+    if (hasPickaxe && !isBack && t > 0.28 && t < 0.62) {
+      const pickT = (t - 0.28) / 0.34;
+      row[cols - 1] = "toolHandle";
+      if ((pickT < 0.35 || pickT > 0.65) && cols - 2 > midCol) row[cols - 2] = "toolHead";
+    }
+    grid.push(row);
+  }
+  return grid;
+}
+
+// Which side of a humanoid the player is currently looking at, given the
+// npc's own current facing (radians, kept in sync with its walk direction
+// by updateNpcs()). `relative` is the bearing from the npc to the player
+// relative to that facing: ~0 means the player stands where the npc faces
+// (sees its front), ~pi means behind it (sees its back), anything else is a
+// profile — mirrored by sign so only one "side" shape needs to exist.
+function viewBucket(playerX, playerY, spr) {
+  let relative = Math.atan2(playerY - spr.y, playerX - spr.x) - (spr.facing ?? 0);
+  while (relative > Math.PI) relative -= 2 * Math.PI;
+  while (relative < -Math.PI) relative += 2 * Math.PI;
+  const abs = Math.abs(relative);
+  if (abs < Math.PI / 4) return { view: "front", mirror: false };
+  if (abs > (3 * Math.PI) / 4) return { view: "back", mirror: false };
+  return { view: "side", mirror: relative < 0 };
+}
+
+// Role -> silhouette opts. Human roles come from NPC_ARCHETYPES, Diligy
+// roles from DILIGY_ARCHETYPES (both above) — a role not listed here (or a
+// future one) just renders as a plain unarmed figure, never an error.
+const PERSON_ROLE_OPTS = {
+  carpenter: { hasAxe: true },
+  herbalist: { hasPack: true },
+  guard: { hasSpear: true, hasArmor: true, shoulderWidthFrac: 0.95 },
+  "root-shaper": { hasPickaxe: true },
+  "seed-keeper": { hasPack: true },
+};
+// Diligy are chlorophyll-based, not human — a lighter green "head" instead
+// of a skin tone keeps that legible even in the same rig shape.
+function personPalette(npc) {
+  const isDiligy = npc.race === "diligy";
+  return {
+    head: isDiligy ? "#9fe08a" : "#d9c9a0",
+    body: npc.color,
+    legs: isDiligy ? "#2f5a3f" : "#33383d",
+    pack: "#4a3624",
+    spear: "#8a7a63",
+    toolHandle: "#6d4c2b",
+    toolHead: "#b8bcc0",
+    armor: "#7a8a9a",
+    hat: "#c9a227",
+  };
+}
+
+const DEFAULT_BG = "#05070a"; // matches the page's own CSS background
+const HALF_UPPER = "▀", HALF_LOWER = "▄"; // half-block sub-character packing
+
+// Packs two vertical "pixels" into one character cell: foreground = the
+// cell's top half, background = its bottom half. Doubles a rig's effective
+// vertical resolution versus one flat character per cell — what makes a
+// rounded head or a tapered leg read as a shape instead of a stair-stepped
+// blob. Only the enhanced person rig below uses this; SPRITE_GLYPHS' flat
+// rows and the existing wall/floor pass are untouched.
+function paintCell(chGrid, colGrid, bgGrid, row, col, topColor, bottomColor) {
+  if (topColor && bottomColor) {
+    chGrid[row][col] = HALF_UPPER; colGrid[row][col] = topColor; bgGrid[row][col] = bottomColor;
+  } else if (topColor) {
+    chGrid[row][col] = HALF_UPPER; colGrid[row][col] = topColor; bgGrid[row][col] = DEFAULT_BG;
+  } else if (bottomColor) {
+    chGrid[row][col] = HALF_LOWER; colGrid[row][col] = bottomColor; bgGrid[row][col] = DEFAULT_BG;
+  }
+}
+
+function drawPersonRig(chGrid, colGrid, bgGrid, depthBuffer, palette, opts, col, halfW, size, baseRow, dist, mirror) {
+  const cols = halfW * 2 + 1;
+  const grid = humanoidSilhouette(size * 2, cols, opts);
+  const fade = Math.min(0.6, dist / 20);
+  for (let ri = 0; ri < size; ri++) {
+    const row = baseRow - size + ri;
+    if (row < 0 || row >= ROWS) continue;
+    const topRow = grid[ri * 2], bottomRow = grid[ri * 2 + 1];
+    for (let cc = col - halfW; cc <= col + halfW; cc++) {
+      if (cc < 0 || cc >= COLS) continue;
+      if (dist >= depthBuffer[cc]) continue;
+      const ci = cc - (col - halfW);
+      const gi = mirror ? cols - 1 - ci : ci;
+      const topKey = topRow[gi], bottomKey = bottomRow[gi];
+      const topColor = topKey ? darken(palette[topKey], fade) : null;
+      const bottomColor = bottomKey ? darken(palette[bottomKey], fade) : null;
+      paintCell(chGrid, colGrid, bgGrid, row, cc, topColor, bottomColor);
+    }
+  }
+}
+
 function rand(){rngState=(rngState*1664525+1013904223)>>>0;return rngState/4294967296}
 function hashNoise(x,y){let n=(x*374761393+y*668265263+worldSeed*69069)>>>0;n=(n^(n>>13))*1274126177;return((n^(n>>16))>>>0)/4294967295}
 function setTile(x,y,v){if(x>0&&y>0&&x<MAPW-1&&y<MAPH-1)MAP[y][x]=v}
@@ -285,7 +441,7 @@ function stampStructure(type,ox,oy,settlementId){
   }));return structure;
 }
 function addNpc(archetype,x,y,homeX,homeY,race="human",settlementId="hearthmere"){
-  const npc={...archetype,id:"person-"+(PEOPLE.length+1),race,settlementId,x:x+.5,y:y+.5,homeX:homeX+.5,homeY:homeY+.5,targetX:x+.5,targetY:y+.5,phase:rand()*10,type:race==="diligy"?"diligy":"npc"};
+  const npc={...archetype,id:"person-"+(PEOPLE.length+1),race,settlementId,x:x+.5,y:y+.5,homeX:homeX+.5,homeY:homeY+.5,targetX:x+.5,targetY:y+.5,phase:rand()*10,type:race==="diligy"?"diligy":"npc",facing:0};
   NPCS.push(npc);PEOPLE.push(npc);SPRITES.push(npc);return npc;
 }
 function generateWorld(seed=worldSeed){
@@ -379,11 +535,23 @@ function darken(hex, factor) {
   const b = Math.round((n & 255) * (1 - factor));
   return `rgb(${r},${g},${b})`;
 }
+// Only emits background-color when it differs from the page's own default —
+// the vast majority of cells (walls/floor/sky/glyph sprites) do, so this
+// keeps the per-frame HTML string from doubling in size for no visual reason.
+function spanFor(color, bg, text) {
+  const style = bg !== DEFAULT_BG ? `color:${color};background:${bg}` : `color:${color}`;
+  return `<span style="${style}">${text}</span>`;
+}
 
 // ---------------- PLAYER ----------------
 const player = { x: 24.5, y: 25.5, angle: -Math.PI/2, pitch: 0 };
 let paused=true, editorTool="claim", toastTimer=0, worldMinutes=8*60;
 let cinematicSurfaces=localStorage.getItem("lokrealm-cinematic-surfaces")!=="off";
+// "enhanced" = shaped person rig (humanoidSilhouette + half-block + view
+// bucketing); "classic" = the original flat SPRITE_GLYPHS row(s) — a toggle
+// to compare the two looks directly, not a performance mode. Only affects
+// npc/diligy sprites; trees etc. always use their existing glyph rendering.
+let spriteStyle = localStorage.getItem("lokrealm-sprite-style") === "classic" ? "classic" : "enhanced";
 
 // ---------------- INPUT ----------------
 const keys = {};
@@ -395,6 +563,7 @@ window.addEventListener("keydown", e => {
   if(k==="m")togglePanel("map-panel",true);
   if(k==="j")openSettlementLedger();
   if(k==="p"||k==="escape")togglePause();
+  if(k==="t"){spriteStyle=spriteStyle==="enhanced"?"classic":"enhanced";localStorage.setItem("lokrealm-sprite-style",spriteStyle);refreshUI()}
   if(k==="tab"){e.preventDefault();openEditor()}
 });
 window.addEventListener("keyup",   e => { keys[e.key.toLowerCase()] = false; });
@@ -563,6 +732,7 @@ function refreshUI(){
   $("wood-count").textContent=inventory.wood;$("coin-count").textContent=inventory.coin;
   const hold=$("freehold-status");if(hold)hold.textContent=playerHold.claimed?`${playerHold.structures} built`:"unclaimed";
   const status=$("build-status");if(status)status.textContent=playerHold.claimed?`${playerHold.name} · ${inventory.wood} wood in stockpile · ${playerHold.structures} structures in chunk ${playerHold.chunkKey}`:`Unclaimed land · ${inventory.wood}/4 wood needed for a Claim Post`;
+  const spriteEl=$("sprite-style");if(spriteEl)spriteEl.textContent=spriteStyle;
 }
 function showToast(message){const el=$("toast");el.textContent=message;el.classList.remove("hidden");clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.add("hidden"),1800)}
 function togglePanel(id,redraw=false){$(id).classList.toggle("hidden");if(redraw&&!$(id).classList.contains("hidden"))drawMap()}
@@ -726,7 +896,7 @@ $('advance-day').onclick=simulateSettlementDay;$('settlements-close').onclick=()
 function updateNpcs(dt){
   const previousMinutes=worldMinutes;worldMinutes=(worldMinutes+dt*2)%1440;if(worldMinutes<previousMinutes)simulateSettlementDay();
   for(const n of NPCS){n.phase-=dt;if(n.phase<=0){n.phase=3+rand()*5;const night=worldMinutes<360||worldMinutes>1200;n.targetX=night?n.homeX:n.homeX+(rand()*8-4);n.targetY=night?n.homeY:n.homeY+(rand()*8-4)}
-    const dx=n.targetX-n.x,dy=n.targetY-n.y,d=Math.hypot(dx,dy);if(d>.15){const nx=n.x+dx/d*dt*.42,ny=n.y+dy/d*dt*.42;if(tileAt(nx,ny)===0){n.x=nx;n.y=ny}else n.phase=0}}
+    const dx=n.targetX-n.x,dy=n.targetY-n.y,d=Math.hypot(dx,dy);if(d>.15){const nx=n.x+dx/d*dt*.42,ny=n.y+dy/d*dt*.42;if(tileAt(nx,ny)===0){n.x=nx;n.y=ny;n.facing=Math.atan2(dy,dx)}else n.phase=0}}
 }
 
 // Water moves as a shallow height field: each open cell shares water with
@@ -836,10 +1006,12 @@ function render() {
   const skyBase=sun>.18?"#78a9ca":"#303b61";
   const chGrid = new Array(ROWS);
   const colGrid = new Array(ROWS);
+  const bgGrid = new Array(ROWS); // only the enhanced person rig (half-block packing) ever sets a non-default bg
   for (let r = 0; r < ROWS; r++) {
     const skyChar=r<ROWS*.18?SKY_CHAR:(sun>.22?"·":".");
     chGrid[r] = new Array(COLS).fill(skyChar);
     colGrid[r] = new Array(COLS).fill(darken(skyBase,Math.max(0,r/ROWS-.12)*.55));
+    bgGrid[r] = new Array(COLS).fill(DEFAULT_BG);
   }
   const depthBuffer = new Array(COLS).fill(Infinity);
   const horizon = Math.floor(ROWS / 2 + player.pitch);
@@ -911,10 +1083,21 @@ function render() {
     if (col < 0 || col >= COLS) continue;
     if (dist >= depthBuffer[col]) continue; // occluded by a wall
 
-    const glyph = SPRITE_GLYPHS[spr.type] || SPRITE_GLYPHS.tree;
-    const spriteColor=spr.color||glyph.color;
+    const isPerson = spr.type === "npc" || spr.type === "diligy";
     const size = Math.max(1, Math.floor(ROWS / (dist + 0.0001) * 0.5*(spr.scale||1)));
     const halfW = Math.max(1, Math.floor(size / 3));
+
+    if (isPerson && spriteStyle === "enhanced") {
+      const bob = Math.round(Math.sin(sceneTime * 3.6 + (spr.x * 3 + spr.y * 7)) * 0.6);
+      const baseRow = horizon + Math.floor(size / 2) + bob;
+      const bucket = viewBucket(player.x, player.y, spr);
+      const opts = { ...(PERSON_ROLE_OPTS[spr.role] || {}), view: bucket.view };
+      drawPersonRig(chGrid, colGrid, bgGrid, depthBuffer, personPalette(spr), opts, col, halfW, size, baseRow, dist, bucket.mirror);
+      continue;
+    }
+
+    const glyph = SPRITE_GLYPHS[spr.type] || SPRITE_GLYPHS.tree;
+    const spriteColor=spr.color||glyph.color;
     const baseRow = horizon + Math.floor(size / 2);
 
     for (let ri = 0; ri < glyph.rows.length; ri++) {
@@ -932,21 +1115,26 @@ function render() {
     }
   }
 
-  // ---- flatten to colored HTML (run-length group by color to limit spans) ----
+  // ---- flatten to colored HTML (run-length group by fg+bg to limit spans) ----
+  // bg only ever differs from DEFAULT_BG on a half-block-packed person-rig
+  // cell, so this only emits a background style there — the vast majority
+  // of cells (walls/floor/sky/glyph sprites) still get a single-color span,
+  // same as before.
   let html = "";
   for (let r = 0; r < ROWS; r++) {
-    let runColor = null, runText = "";
+    let runColor = null, runBg = null, runText = "";
     for (let c = 0; c < COLS; c++) {
       const color = colGrid[r][c];
+      const bg = bgGrid[r][c];
       const ch = chGrid[r][c];
-      if (color !== runColor) {
-        if (runText) html += `<span style="color:${runColor}">${runText}</span>`;
-        runColor = color; runText = ch;
+      if (color !== runColor || bg !== runBg) {
+        if (runText) html += spanFor(runColor, runBg, runText);
+        runColor = color; runBg = bg; runText = ch;
       } else {
         runText += ch;
       }
     }
-    if (runText) html += `<span style="color:${runColor}">${runText}</span>`;
+    if (runText) html += spanFor(runColor, runBg, runText);
     html += "\n";
   }
   screenEl.innerHTML = html;

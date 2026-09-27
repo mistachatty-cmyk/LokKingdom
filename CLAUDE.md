@@ -41,6 +41,33 @@ from scratch as a small, expandable foundation rather than a demo.
 - `SPRITES` / `SPRITE_GLYPHS`: billboarded objects (trees, an NPC)
   projected into screen space, depth-tested per column against the
   wall pass so they're hidden correctly behind walls.
+- **Person rig (`npc`/`diligy` sprites only)**: `humanoidSilhouette()`
+  builds a `[subRows][cols]` grid of palette-key strings from proportions
+  (head/shoulder/waist/leg fractions) plus boolean opts (`hasHat`/
+  `hasPack`/`hasSpear`/`hasAxe`/`hasPickaxe`/`hasArmor`) — `PERSON_ROLE_OPTS`
+  maps an NPC's `role` (from `NPC_ARCHETYPES`/`DILIGY_ARCHETYPES`) to a set
+  of these. `viewBucket(playerX, playerY, spr)` compares the bearing from
+  the NPC to the player against the NPC's own `facing` (radians, kept in
+  sync with its current walk direction by `updateNpcs()`) to pick
+  `"front"`/`"side"`/`"back"`, mirroring one authored "side" shape instead
+  of needing separate left/right art — this is what makes e.g. a
+  herbalist's pack invisible from the front, centered from the back. A
+  small `performance.now()`-driven idle bob (phase-shifted per NPC by its
+  own position, so a group doesn't bob in lockstep) is layered on top.
+  `personPalette(npc)` derives the rig's colors from the NPC's own
+  `archetype.color` plus a race-based head tone (skin for human, a
+  lighter green for Diligy, who are chlorophyll-based). `drawPersonRig()`
+  packs two vertical "pixels" per character cell via `▀`/`▄` half-block
+  glyphs (`paintCell()`, using the `bgGrid`/`spanFor()` background-color
+  channel added alongside `chGrid`/`colGrid` for this) — doubling a rig's
+  effective vertical resolution so a rounded head or tapered leg reads as
+  a shape instead of a stair-stepped blob. **`spriteStyle`** (`"enhanced"`
+  default, or `"classic"`, `T` key, persisted to `localStorage`) toggles
+  the whole person rig off in favor of the original flat `SPRITE_GLYPHS`
+  row(s) — a deliberate A/B comparison, not a performance mode. Only
+  `npc`/`diligy` sprites are affected either way; every other sprite type
+  (trees, rocks, signs, etc.) always renders through `SPRITE_GLYPHS`
+  exactly as before, wind-sway included.
 - `render()`: builds a `[ROWS][COLS]` character+color grid, then
   flattens it into one run-length-encoded HTML string (grouping
   consecutive same-color runs into a single `<span>`) written to a
@@ -53,7 +80,9 @@ from scratch as a small, expandable foundation rather than a demo.
 ## Input
 
 Desktop: `W A S D` / arrow keys to move, `Q`/`E` to turn, click the
-canvas then move the mouse to look (pointer lock).
+canvas then move the mouse to look (pointer lock). `T` toggles the
+`npc`/`diligy` sprite render style between `enhanced` (shaped rig) and
+`classic` (original flat glyph) — see "Person rig" above.
 
 Touch (shown only on `pointer: coarse` devices via CSS media query):
 dual dynamic joysticks, both positioned via inline `left`/`top` set in
@@ -160,7 +189,10 @@ at the repo root is served as-is, no build command needed.
 4. Variable terrain elevation, stairs, and then progressive voxel capabilities
 5. World JSON import plus editor undo/redo and prefab placement
 6. Multiple biomes and an urban prefab/generation catalog
-7. Sprite animation frames and seasonal/day-night palettes
+7. ~~Sprite animation frames~~ — done for `npc`/`diligy`: idle bob +
+   front/side/back view-bucketing via a shaped rig (see "Person rig"
+   above), toggle with `T`. Still open: seasonal/day-night palettes, and
+   a real walk cycle (legs alternating mid-stride) once needed.
 8. Swap `<pre>` + spans for `<canvas>` + `fillText` if color count or
    frame size makes DOM spans a measured bottleneck (don't do this
    preemptively — only if profiling shows it's needed)
