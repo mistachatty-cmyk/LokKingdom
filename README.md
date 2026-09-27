@@ -23,6 +23,17 @@ cells retain structure ownership, height, roof, door/window, material, race,
 condition, and settlement identity, which the renderer turns into varied
 facades and silhouettes.
 
+## Living character models
+
+Human and Diligy NPCs render as a shaped, procedural rig instead of a flat
+glyph: a rounded head, shoulders, and legs built from proportions (not
+hand-drawn ASCII art), with role-appropriate gear (an axe for a carpenter, a
+pack for a herbalist, armor and a spear for a guard). They idle-bob gently
+and turn to face front/side/back depending on which way you're looking at
+them relative to which way they're currently walking — a herbalist's pack,
+for instance, is hidden from the front and visible from behind. Press `T`
+to compare this against the original flat-glyph look.
+
 ## Build a freehold
 
 Harvest trees for wood, open **PACK**, then choose **Build realm**. Claim one
@@ -59,6 +70,7 @@ mouse look to behave consistently across browsers).
 - Click the screen, then move the mouse — free look (pointer lock)
 - `F` / Space — talk, inspect, or use the equipped axe
 - `I` — inventory; `M` — minimap; `J` — settlements; `Tab` — world editor; `P` — pause
+- `T` — toggle NPCs between the shaped/animated rig and the original flat glyph
 - The always-visible **Pause/Resume** button pauses both the game and water simulation.
 - **Touch**: MAP, PACK, and REALM quick buttons expose the same systems. Open
   PACK, then **Build realm** to use the construction palette.
@@ -111,7 +123,9 @@ The current priority order is:
 - [ ] Construction queues, NPC jobs, housing, food, and maintenance
 - [ ] Rotatable prefab sockets, bridges, gates, road grades, forts, and castles
 - [ ] Multiple biomes, settlement catalogs, and an urban generation catalog
-- [ ] Sprite animation frames and a dedicated visual/model quality pass
+- [x] Sprite animation frames and a dedicated visual/model quality pass —
+      shaped rig + idle bob + front/side/back view-bucketing for `npc`/
+      `diligy` (toggle with `T`); seasonal/day-night palettes still open
 - [ ] Swap the `<pre>` renderer for `<canvas>` + `fillText` once color
       count / frame size makes DOM spans a bottleneck
 - [x] Mobile touch controls (virtual joystick + drag-to-look) + gyro look
