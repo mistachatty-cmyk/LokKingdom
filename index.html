@@ -762,12 +762,20 @@ document.querySelectorAll("[data-menu]").forEach(btn=>btn.onclick=()=>{
   if(action==="settings"){openSettings(true);return}
   paused=false;$("main-menu").classList.add("hidden");syncPauseButton();showToast("Seed "+worldSeed+" · follow the road to the village");
 });
-function nearestSprite(max=1.65){let best=null,bd=max;for(const s of SPRITES){const d=Math.hypot(s.x-player.x,s.y-player.y);if(d<bd){best=s;bd=d}}return best}
+// Types interact() actually does something with. Filtering nearestSprite to
+// these (instead of "whatever sprite is closest, of any type") matters
+// because decorative sprites can vastly outnumber interactable ones in a
+// generated world (a seed can place hundreds of flowers) — without this, a
+// flower standing between the player and a tree they're facing would win
+// nearestSprite's search and silently swallow the F press with no feedback,
+// making a real tree look unchoppable for no visible reason.
+const INTERACTABLE_TYPES = new Set(["tree","pine","oak","birch","autumn","npc","diligy","sign","well","rootspire","seedling"]);
+function nearestSprite(max=1.65,filter=null){let best=null,bd=max;for(const s of SPRITES){if(filter&&!filter(s))continue;const d=Math.hypot(s.x-player.x,s.y-player.y);if(d<bd){best=s;bd=d}}return best}
 function interact(){
   if(paused)return;const tx=Math.floor(player.x+Math.cos(player.angle)*1.15),ty=Math.floor(player.y+Math.sin(player.angle)*1.15),cell=CELL_META[ty]&&CELL_META[ty][tx];
   if(cell&&cell.feature==="C"){showToast(`${playerHold.name} claim · ${playerHold.structures} structures built`);return}
   if(cell&&cell.feature==="D"){const structure=STRUCTURES.find(x=>x.id===cell.structureId),home=structure&&SETTLEMENTS.find(x=>x.id===structure.settlementId);if(structure){showToast(`${structure.type} · ${home?home.name:playerHold.name}`);return}}
-  const s=nearestSprite();if(!s){showToast("Nothing within reach");return}
+  const s=nearestSprite(1.65,sp=>INTERACTABLE_TYPES.has(sp.type));if(!s){showToast("Nothing within reach");return}
   if(["tree","pine","oak","birch","autumn"].includes(s.type)){
     s.hp=(s.hp||3)-1;showToast(s.hp>0?"Chop! The trunk holds.":"Tree felled · +3 wood");
     if(s.hp<=0){s.type="stump";s.solid=false;inventory.wood+=3;refreshUI()}return;
