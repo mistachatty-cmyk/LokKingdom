@@ -68,6 +68,17 @@ from scratch as a small, expandable foundation rather than a demo.
   `npc`/`diligy` sprites are affected either way; every other sprite type
   (trees, rocks, signs, etc.) always renders through `SPRITE_GLYPHS`
   exactly as before, wind-sway included.
+- `interact()` / `nearestSprite()`: `F` (or Space, or the mobile action
+  button) acts on the *nearest interactable* sprite, not just the nearest
+  sprite — `nearestSprite(max, filter)` takes an optional predicate, and
+  `interact()` passes `INTERACTABLE_TYPES` (tree/pine/oak/birch/autumn,
+  npc, diligy, sign, well, rootspire, seedling). This matters because a
+  generated world can seed hundreds of decorative sprites (flowers, in
+  particular); without the filter, a flower standing between the player
+  and a tree they're facing would win the distance check and silently
+  swallow the keypress, making a real tree look unchoppable. A decorative
+  sprite has no `interact()` branch and never will on its own — give it
+  one by adding its type to `INTERACTABLE_TYPES` too.
 - `render()`: builds a `[ROWS][COLS]` character+color grid, then
   flattens it into one run-length-encoded HTML string (grouping
   consecutive same-color runs into a single `<span>`) written to a
